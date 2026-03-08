@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% block title %}New Scan{% endblock %}
+{% block page_title %}New Scan{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}" style="color:var(--text-muted)">Dashboard</a>
+</li>
+<li class="breadcrumb-item active">Configure Scan</li>
+{% endblock %}
+{% block extra_css %}
+<style>
+    .check-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-bottom: 8px;
+    }
+
+    .check-item:hover {
+        border-color: rgba(0, 212, 170, 0.3);
+        background: rgba(0, 212, 170, 0.05);
+    }
+
+    .check-item input[type=checkbox] {
+        accent-color: var(--accent);
+        width: 16px;
+        height: 16px;
+        margin-top: 2px;
+        flex-shrink: 0;
+    }
+
+    .check-label {
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .check-desc {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 2px;
+    }
+
+    .mode-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .mode-card:hover {
+        border-color: rgba(0, 212, 170, 0.4);
+    }
+
+    .mode-card.selected {
+        border-color: var(--accent);
+        background: rgba(0, 212, 170, 0.05);
+    }
+
+    .mode-card input {
+        display: none;
+    }
+
+    .speed-opt {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.02);
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .speed-opt:hover {
+        border-color: rgba(0, 212, 170, 0.4);
+    }
+
+    .speed-opt.selected {
+        border-color: var(--accent);
+        background: rgba(0, 212, 170, 0.05);
+    }
+
+    .speed-opt input {
+        display: none;
+    }
+
+    .speed-icon {
+        font-size: 22px;
+        margin-bottom: 6px;
+    }
+
+    .legal-box {
+        background: rgba(202, 138, 4, 0.08);
+        border: 1px solid rgba(202, 138, 4, 0.3);
+        border-radius: 12px;
+        padding: 16px 20px;
+    }
+
+    .error-box {
+        background: rgba(220, 38, 38, 0.08);
+        border: 1px solid rgba(220, 38, 38, 0.3);
+        border-radius: 12px;
+        padding: 14px 18px;
+        color: #f87171;
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        {% if error %}
+        <div class="error-box"><i class="fas fa-exclamation-triangle me-2"></i>{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('scan.new_scan') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <!-- Target -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-crosshairs me-2" style="color:var(--accent)"></i>Target
+                        Configuration</div>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Target URL <span style="color:#f87171">*</span></label>
+                        <input type="text" name="target_url" class="form-control"
+                            placeholder="https://target.example.com" value="{{ request.args.get('url', '') }}" required>
+                        <small style="color:var(--text-muted);font-size:12px;margin-top:4px;display:block;">
+                            <i class="fas fa-info-circle me-1"></i>Include http:// or https://
+                        </small>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Crawl Depth</label>
+                            <select name="crawl_depth" class="form-select">
+                                <option value="1">1 — Surface (homepage only)</option>
+                                <option value="2">2 — Shallow</option>
+                                <option value="3" selected>3 — Standard (recommended)</option>
+                                <option value="5">5 — Deep</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Request Timeout</label>
+                            <select name="timeout" class="form-select">
+                                <option value="5">5 seconds</option>
+                                <option value="8" selected>8 seconds (recommended)</option>
+                                <option value="15">15 seconds</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">DVWA Security Level</label>
+                            <select name="dvwa_security" class="form-select">
+                                <option value="low" selected>Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="impossible">Impossible</option>
+                            </select>
+                            <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block;">
+                                <i class="fas fa-info-circle me-1"></i>Only applies to DVWA targets
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan Mode -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-sliders-h me-2" style="color:var(--accent)"></i>Scan Mode
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="mode-card selected" id="mode-active-card" onclick="selectMode('active')">
+                                <input type="radio" name="scan_mode" value="active" checked>
+                                <div class="d-flex gap-3 align-items-start">
+                                    <div style="font-size:24px;color:#f87171;"><i class="fas fa-bolt"></i></div>
+                                    <div>
+                                        <div style="font-weight:700;font-size:15px;">Active Scan</div>
+                                        <div style="color:var(--text-muted);font-size:13px;margin-top:4px;">Sends
+                                            intrusive payloads to discover vulnerabilities. More thorough but may affect
+                                            the application.</div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="mode-card" id="mode-passive-card" onclick="selectMode('passive')">
+                                <input type="radio" name="scan_mode" value="passive">
+                                <div class="d-flex gap-3 align-items-start">
+                                    <div style="font-size:24px;color:#60a5fa;"><i class="fas fa-eye"></i></div>
+                                    <div>
+                                        <div style="font-weight:700;font-size:15px;">Passive Scan</div>
+                                        <div style="color:var(--text-muted);font-size:13px;margin-top:4px;">Read-only
+                                            analysis of headers and structure. Safe for production — no payloads sent.
+                                        </div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan Speed -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-tachometer-alt me-2" style="color:var(--accent)"></i>Scan
+                        Speed</div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="speed-opt w-100" id="speed-safe" onclick="selectSpeed('safe')">
+                                <input type="radio" name="scan_speed" value="safe">
+                                <div class="speed-icon" style="color:#4ade80"><i class="fas fa-turtle"></i></div>
+                                <div style="font-weight:700;font-size:14px;">Safe</div>
+                                <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:4px;">2s
+                                    delay • 2 threads • 50 URLs</div>
+                            </label>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="speed-opt w-100 selected" id="speed-balanced"
+                                onclick="selectSpeed('balanced')">
+                                <input type="radio" name="scan_speed" value="balanced" checked>
+                                <div class="speed-icon" style="color:#fbbf24"><i class="fas fa-balance-scale"></i></div>
+                                <div style="font-weight:700;font-size:14px;">Balanced</div>
+                                <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:4px;">
+                                    0.5s delay • 5 threads • 150 URLs</div>
+                            </label>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="speed-opt w-100" id="speed-aggressive" onclick="selectSpeed('aggressive')">
+                                <input type="radio" name="scan_speed" value="aggressive">
+                                <div class="speed-icon" style="color:#f87171"><i class="fas fa-fire"></i></div>
+                                <div style="font-weight:700;font-size:14px;">Aggressive</div>
+                                <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:4px;">
+                                    0.1s delay • 10 threads • 500 URLs</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vulnerability Checks -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-bug me-2" style="color:var(--accent)"></i>Vulnerability
+                        Checks</div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-dark-outline me-1" onclick="toggleAll(true)">Select
+                            All</button>
+                        <button type="button" class="btn btn-sm btn-dark-outline"
+                            onclick="toggleAll(false)">Clear</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        {% set check_info = {
+                        'sql_injection': ('SQL Injection', 'Error-based and blind SQLi detection', 'fas fa-database',
+                        'critical'),
+                        'xss': ('Cross-Site Scripting', 'Reflected XSS in forms and URL params', 'fas fa-code', 'high'),
+                        'csrf': ('CSRF Detection', 'Missing tokens on state-changing forms', 'fas fa-random', 'medium'),
+                        'security_headers': ('Security Headers', 'Missing HTTP security headers analysis', 'fas fa-cog',
+                        'medium'),
+                        'directory_traversal': ('Directory Traversal / LFI', 'Path traversal and local file inclusion',
+                        'fas fa-folder-open', 'high'),
+                        'command_injection': ('Command Injection', 'OS command injection via user input', 'fas
+                        fa-terminal', 'critical'),
+                        'idor': ('IDOR', 'Insecure direct object reference detection', 'fas fa-link', 'high'),
+                        'directory_listing': ('Directory Listing', 'Exposed directory indexes on server', 'fas fa-list',
+                        'medium'),
+                        } %}
+                        {% for check in checks %}
+                        {% if check in check_info %}
+                        {% set name, desc, icon, sev = check_info[check] %}
+                        <div class="col-md-6">
+                            <label class="check-item">
+                                <input type="checkbox" name="checks" value="{{ check }}" checked class="vuln-check">
+                                <div>
+                                    <div class="check-label">
+                                        <i class="{{ icon }} me-1"></i>{{ name }}
+                                        <span class="sev-badge badge-{{ sev }} ms-2" style="font-size:9px;">{{ sev
+                                            }}</span>
+                                    </div>
+                                    <div class="check-desc">{{ desc }}</div>
+                                </div>
+                            </label>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legal -->
+            <div class="legal-box mb-4">
+                <div class="d-flex gap-3 align-items-start">
+                    <input type="checkbox" name="authorized" id="authorized"
+                        style="accent-color:var(--accent);width:18px;height:18px;margin-top:2px;flex-shrink:0;"
+                        required>
+                    <label for="authorized" style="cursor:pointer;font-size:14px;color:#fbbf24;font-weight:500;">
+                        <i class="fas fa-gavel me-1"></i>
+                        I confirm that I have explicit legal authorization to perform security testing on this target. I
+                        understand that unauthorized scanning is illegal and unethical. I take full responsibility for
+                        my actions.
+                    </label>
+                </div>
+            </div>
+
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn btn-accent px-5 py-2">
+                    <i class="fas fa-search me-2"></i>Launch Scan
+                </button>
+                <a href="{{ url_for('dashboard.index') }}" class="btn btn-dark-outline px-4 py-2">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+    function selectMode(mode) {
+        document.getElementById('mode-active-card').classList.remove('selected');
+        document.getElementById('mode-passive-card').classList.remove('selected');
+        document.getElementById('mode-' + mode + '-card').classList.add('selected');
+        document.querySelector(`input[name=scan_mode][value=${mode}]`).checked = true;
+    }
+    function selectSpeed(speed) {
+        ['safe', 'balanced', 'aggressive'].forEach(s => document.getElementById('speed-' + s).classList.remove('selected'));
+        document.getElementById('speed-' + speed).classList.add('selected');
+        document.querySelector(`input[name=scan_speed][value=${speed}]`).checked = true;
+    }
+    function toggleAll(state) {
+        document.querySelectorAll('.vuln-check').forEach(cb => cb.checked = state);
+    }
+</script>
+{% endblock %}

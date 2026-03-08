@@ -1,0 +1,594 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Sudarshan{% endblock %}
+{% block breadcrumb %}Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .chart-row {
+    display: grid;
+    grid-template-columns: 5fr 3fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .chart-row-2 {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  /* ── MINI TREND ── */
+  .trend-up {
+    color: var(--red);
+  }
+
+  .trend-down {
+    color: var(--green);
+  }
+
+  /* ── TABLE SCAN ACTIONS ── */
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all var(--transition);
+    text-decoration: none;
+  }
+
+  .action-btn:hover {
+    background: var(--bg-overlay);
+    color: var(--text-primary);
+  }
+
+  .action-btn.danger:hover {
+    border-color: var(--red-dim);
+    color: var(--red);
+    background: var(--red-glow);
+  }
+
+  .action-btn.primary:hover {
+    border-color: var(--cyan-dim);
+    color: var(--cyan);
+    background: var(--cyan-glow);
+  }
+
+  /* ── SCORE BADGE ── */
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius);
+    font-family: var(--display);
+    font-size: 16px;
+    font-weight: 900;
+  }
+
+  .score-a {
+    background: rgba(0, 212, 106, 0.15);
+    color: var(--green);
+  }
+
+  .score-b {
+    background: rgba(0, 229, 255, 0.15);
+    color: var(--cyan);
+  }
+
+  .score-c {
+    background: rgba(255, 184, 0, 0.15);
+    color: var(--amber);
+  }
+
+  .score-d {
+    background: rgba(255, 100, 0, 0.15);
+    color: #ff6400;
+  }
+
+  .score-f {
+    background: rgba(255, 45, 85, 0.15);
+    color: var(--red);
+  }
+
+  /* ── STATUS PILL ── */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .status-pill::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .status-running {
+    color: var(--cyan);
+    background: var(--cyan-glow);
+  }
+
+  .status-complete {
+    color: var(--green);
+    background: rgba(0, 212, 106, 0.1);
+  }
+
+  .status-error {
+    color: var(--red);
+    background: var(--red-glow);
+  }
+
+  .status-paused {
+    color: var(--amber);
+    background: rgba(255, 184, 0, 0.1);
+  }
+
+  /* ── ACTIVITY FEED ── */
+  .activity-feed {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .activity-item:last-child {
+    border-bottom: none;
+  }
+
+  .activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  .activity-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .activity-text strong {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .activity-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ── SEVERITY BREAKDOWN ── */
+  .sev-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sev-row:last-child {
+    border-bottom: none;
+  }
+
+  .sev-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    width: 64px;
+    flex-shrink: 0;
+  }
+
+  .sev-bar-track {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-elevated);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .sev-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+
+  .sev-count {
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 40px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── PAGE HEADER ── -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Threat <span>Dashboard</span></h1>
+    <div class="page-subtitle">// REAL-TIME SECURITY OVERVIEW</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--text-muted);">
+      Last updated: <span class="text-cyan" id="lastUpdated">just now</span>
+    </span>
+    <a href="{{ url_for('scan.new_scan') }}" class="btn-threat btn-primary-threat">
+      <i class="fa-solid fa-plus"></i> New Scan
+    </a>
+  </div>
+</div>
+
+<!-- ── STAT CARDS ── -->
+<div class="dashboard-grid">
+  <div class="stat-card cyan">
+    <i class="fa-solid fa-radar stat-icon"></i>
+    <div class="stat-label">Total Scans</div>
+    <div class="stat-value">{{ stats.total_scans | default(247) }}</div>
+    <div class="stat-meta">
+      <span class="trend-up"><i class="fa-solid fa-arrow-up" style="font-size:9px"></i> 12%</span>
+      vs last month
+    </div>
+  </div>
+
+  <div class="stat-card red">
+    <i class="fa-solid fa-skull-crossbones stat-icon"></i>
+    <div class="stat-label">Critical Findings</div>
+    <div class="stat-value">{{ stats.critical | default(34) }}</div>
+    <div class="stat-meta">
+      <span class="trend-up"><i class="fa-solid fa-arrow-up" style="font-size:9px"></i> 3</span>
+      since last scan
+    </div>
+  </div>
+
+  <div class="stat-card amber">
+    <i class="fa-solid fa-triangle-exclamation stat-icon"></i>
+    <div class="stat-label">High / Medium</div>
+    <div class="stat-value">{{ (stats.high | default(89)) + (stats.medium | default(156)) }}</div>
+    <div class="stat-meta">High: {{ stats.high | default(89) }} &nbsp;·&nbsp; Med: {{ stats.medium | default(156) }}
+    </div>
+  </div>
+
+  <div class="stat-card green">
+    <i class="fa-solid fa-shield-check stat-icon"></i>
+    <div class="stat-label">Avg Security Score</div>
+    <div class="stat-value">{{ stats.avg_score | default('B') }}</div>
+    <div class="stat-meta">
+      <span class="trend-down"><i class="fa-solid fa-arrow-up" style="font-size:9px"></i> +0.4</span>
+      improved
+    </div>
+  </div>
+</div>
+
+<!-- ── TREND CHART + SEVERITY PIE ── -->
+<div class="chart-row">
+  <div class="card-base">
+    <div class="card-header">
+      <span class="card-title">Vulnerability Trend</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-threat btn-ghost btn-sm-threat period-btn active-period" data-period="30">30D</button>
+        <button class="btn-threat btn-ghost btn-sm-threat period-btn" data-period="90">90D</button>
+        <button class="btn-threat btn-ghost btn-sm-threat period-btn" data-period="180">6M</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="trendChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="card-base">
+    <div class="card-header">
+      <span class="card-title">Severity Breakdown</span>
+    </div>
+    <div class="card-body">
+      <canvas id="severityChart" height="160" style="max-width:200px;margin:0 auto;display:block;"></canvas>
+      <div style="margin-top:20px;">
+        <div class="sev-row">
+          <span class="sev-label text-red">Critical</span>
+          <div class="sev-bar-track">
+            <div class="sev-bar-fill" style="width:{{ sev_pct.critical | default(12) }}%;background:var(--red)"></div>
+          </div>
+          <span class="sev-count text-red">{{ stats.critical | default(34) }}</span>
+        </div>
+        <div class="sev-row">
+          <span class="sev-label" style="color:#ff6400">High</span>
+          <div class="sev-bar-track">
+            <div class="sev-bar-fill" style="width:{{ sev_pct.high | default(31) }}%;background:#ff6400"></div>
+          </div>
+          <span class="sev-count" style="color:#ff6400">{{ stats.high | default(89) }}</span>
+        </div>
+        <div class="sev-row">
+          <span class="sev-label text-amber">Medium</span>
+          <div class="sev-bar-track">
+            <div class="sev-bar-fill" style="width:{{ sev_pct.medium | default(54) }}%;background:var(--amber)"></div>
+          </div>
+          <span class="sev-count text-amber">{{ stats.medium | default(156) }}</span>
+        </div>
+        <div class="sev-row">
+          <span class="sev-label text-green">Low</span>
+          <div class="sev-bar-track">
+            <div class="sev-bar-fill" style="width:{{ sev_pct.low | default(24) }}%;background:var(--green)"></div>
+          </div>
+          <span class="sev-count text-green">{{ stats.low | default(68) }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── RECENT SCANS TABLE + ACTIVITY ── -->
+<div class="chart-row-2">
+  <div class="card-base">
+    <div class="card-header">
+      <span class="card-title">Recent Scans</span>
+      <a href="{{ url_for('history.index') }}" class="btn-threat btn-ghost btn-sm-threat">View All</a>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="threat-table">
+        <thead>
+          <tr>
+            <th>Target</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Findings</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for scan in recent_scans | default([
+          {'id':1,'target':'https://example.com','status':'complete','score':'B','critical':2,'high':5,'med':8,'date':'Feb
+          17 2026'},
+          {'id':2,'target':'https://test.shop','status':'running','score':'—','critical':1,'high':2,'med':3,'date':'Feb
+          17 2026'},
+          {'id':3,'target':'https://portal.local','status':'complete','score':'A','critical':0,'high':1,'med':4,'date':'Feb
+          16 2026'},
+          {'id':4,'target':'https://app.company.io','status':'paused','score':'—','critical':0,'high':0,'med':1,'date':'Feb
+          15 2026'},
+          {'id':5,'target':'https://blog.mysite.net','status':'error','score':'F','critical':5,'high':9,'med':11,'date':'Feb
+          14 2026'},
+          ]) %}
+          <tr>
+            <td>
+              <div style="font-family:var(--mono);font-size:12px;color:var(--text-primary)">{{ scan.target |
+                truncate(38) }}</div>
+            </td>
+            <td>
+              <span class="status-pill status-{{ scan.status }}">{{ scan.status }}</span>
+            </td>
+            <td>
+              <span class="score-badge score-{{ scan.score | lower | replace('+','') | replace('-','') }}">{{ scan.score
+                }}</span>
+            </td>
+            <td>
+              <span class="text-red" title="Critical" style="font-family:var(--mono);font-size:12px">{{ scan.critical
+                }}</span>
+              <span class="text-muted">/</span>
+              <span style="color:#ff6400;font-family:var(--mono);font-size:12px">{{ scan.high }}</span>
+              <span class="text-muted">/</span>
+              <span class="text-amber" style="font-family:var(--mono);font-size:12px">{{ scan.med }}</span>
+            </td>
+            <td class="text-muted" style="font-family:var(--mono);font-size:11px">{{ scan.date }}</td>
+            <td>
+              <div style="display:flex;gap:4px;">
+                {% if scan.status == 'running' or scan.status == 'paused' %}
+                <a href="{{ url_for('scan.progress', scan_id=scan.id) }}" class="action-btn primary"
+                  title="View Progress"><i class="fa-solid fa-wave-pulse"></i></a>
+                {% endif %}
+                <a href="{{ url_for('results.view', scan_id=scan.id) }}" class="action-btn primary"
+                  title="View Results"><i class="fa-solid fa-eye"></i></a>
+                <a href="{{ url_for('results.generate_pdf', scan_id=scan.id) }}" class="action-btn"
+                  title="Download PDF"><i class="fa-solid fa-file-pdf"></i></a>
+                <button class="action-btn danger" title="Delete" onclick="deleteScan({{ scan.id }})"><i
+                    class="fa-solid fa-trash"></i></button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card-base">
+    <div class="card-header">
+      <span class="card-title">Recent Activity</span>
+    </div>
+    <div class="card-body" style="padding:16px 20px;">
+      <div class="activity-feed">
+        <div class="activity-item">
+          <div class="activity-dot" style="background:var(--red)"></div>
+          <div>
+            <div class="activity-text"><strong>Critical SQLi found</strong> on example.com</div>
+            <div class="activity-time">2 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:var(--cyan)"></div>
+          <div>
+            <div class="activity-text">Scan <strong>#247</strong> started on test.shop</div>
+            <div class="activity-time">14 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:var(--green)"></div>
+          <div>
+            <div class="activity-text"><strong>Scan #246</strong> completed — Grade A</div>
+            <div class="activity-time">1 hr ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:var(--amber)"></div>
+          <div>
+            <div class="activity-text"><strong>XSS (Stored)</strong> confirmed on portal.local</div>
+            <div class="activity-time">3 hr ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:var(--purple)"></div>
+          <div>
+            <div class="activity-text">PDF report exported for <strong>company.io</strong></div>
+            <div class="activity-time">5 hr ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:var(--text-muted)"></div>
+          <div>
+            <div class="activity-text">Scan <strong>#244</strong> deleted by user</div>
+            <div class="activity-time">Yesterday</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // ── TREND CHART ──
+  const trendCtx = document.getElementById('trendChart').getContext('2d');
+  const trendData = {{ trend_data | default ({
+    'labels': ['Jan 1', 'Jan 8', 'Jan 15', 'Jan 22', 'Jan 29', 'Feb 5', 'Feb 12', 'Feb 17'],
+    'critical': [2, 5, 3, 8, 4, 6, 9, 7],
+    'high': [8, 12, 10, 18, 14, 16, 20, 15],
+    'medium': [15, 22, 18, 30, 25, 28, 35, 27]
+  }) | tojson | safe }};
+
+  new Chart(trendCtx, {
+    type: 'line',
+    data: {
+      labels: trendData.labels,
+      datasets: [
+        {
+          label: 'Critical',
+          data: trendData.critical,
+          borderColor: '#ff2d55',
+          backgroundColor: 'rgba(255,45,85,0.08)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#ff2d55',
+          fill: true,
+          tension: 0.4
+        },
+        {
+          label: 'High',
+          data: trendData.high,
+          borderColor: '#ff6400',
+          backgroundColor: 'rgba(255,100,0,0.06)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#ff6400',
+          fill: true,
+          tension: 0.4
+        },
+        {
+          label: 'Medium',
+          data: trendData.medium,
+          borderColor: '#ffb800',
+          backgroundColor: 'rgba(255,184,0,0.05)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#ffb800',
+          fill: true,
+          tension: 0.4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: { color: '#8899aa', font: { family: "'Share Tech Mono'", size: 11 }, boxWidth: 10 }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(30,45,61,0.8)' },
+          ticks: { color: '#4a5a6a', font: { family: "'Share Tech Mono'", size: 10 } }
+        },
+        y: {
+          grid: { color: 'rgba(30,45,61,0.8)' },
+          ticks: { color: '#4a5a6a', font: { family: "'Share Tech Mono'", size: 10 } },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  // ── SEVERITY DONUT ──
+  const sevCtx = document.getElementById('severityChart').getContext('2d');
+  new Chart(sevCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Critical', 'High', 'Medium', 'Low'],
+      datasets: [{
+        data: [
+          {{ stats.critical | default(34) }},
+      {{ stats.high | default(89) }},
+          {{ stats.medium | default(156) }},
+    {{ stats.low | default(68) }}
+        ],
+    backgroundColor: ['#ff2d55', '#ff6400', '#ffb800', '#00d46a'],
+    borderWidth: 2,
+    borderColor: '#111820'
+      }]
+    },
+    options: {
+    cutout: '72%',
+    plugins: { legend: { display: false } }
+  }
+  });
+
+  // ── DELETE SCAN ──
+  function deleteScan(id) {
+    if (!confirm('Delete scan #' + id + '? This cannot be undone.')) return;
+    fetch(`/api/scans/${id}`, { method: 'DELETE' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) { showToast('Scan deleted.', 'success'); setTimeout(() => location.reload(), 800); }
+        else showToast('Failed to delete scan.', 'error');
+      });
+  }
+
+  // ── LIVE TIMESTAMP ──
+  setInterval(() => {
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+  }, 10000);
+</script>
+{% endblock %}

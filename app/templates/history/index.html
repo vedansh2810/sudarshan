@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% block title %}Scan History — Sudarshan{% endblock %}
+{% block breadcrumb %}History{% endblock %}
+
+{% block extra_head %}
+<style>
+  .history-controls {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .search-wrap {
+    position: relative;
+  }
+
+  .search-wrap i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
+
+  .search-input {
+    padding-left: 36px;
+  }
+
+  /* ── HISTORY ROWS ── */
+  .history-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background var(--transition);
+  }
+
+  .history-row:hover {
+    background: var(--bg-elevated);
+  }
+
+  .history-row:last-child {
+    border-bottom: none;
+  }
+
+  .history-select input[type="checkbox"] {
+    display: none;
+  }
+
+  .history-select-box {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--border-bright);
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+    font-size: 9px;
+    color: transparent;
+  }
+
+  .history-row.selected .history-select-box {
+    background: var(--cyan);
+    border-color: var(--cyan);
+    color: var(--bg-void);
+  }
+
+  .history-target {
+    min-width: 0;
+  }
+
+  .target-url {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+
+  .target-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .target-meta-item {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  /* ── PAGINATION ── */
+  .pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+
+  .page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+    text-decoration: none;
+  }
+
+  .page-btn:hover {
+    background: var(--bg-overlay);
+    color: var(--text-primary);
+  }
+
+  .page-btn.active {
+    background: var(--cyan-glow);
+    border-color: var(--cyan-dim);
+    color: var(--cyan);
+  }
+
+  /* ── BULK ACTIONS ── */
+  .bulk-bar {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: var(--cyan-glow);
+    border-bottom: 1px solid var(--cyan-dim);
+  }
+
+  .bulk-bar.visible {
+    display: flex;
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+    opacity: 0.2;
+  }
+
+  .empty-title {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  /* ── SCORE MINI ── */
+  .grade-mini {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 900;
+  }
+
+  .gm-a {
+    background: rgba(0, 212, 106, 0.15);
+    color: var(--green);
+  }
+
+  .gm-b {
+    background: rgba(0, 229, 255, 0.12);
+    color: var(--cyan);
+  }
+
+  .gm-c {
+    background: rgba(255, 184, 0, 0.12);
+    color: var(--amber);
+  }
+
+  .gm-d {
+    background: rgba(255, 100, 0, 0.12);
+    color: #ff6400;
+  }
+
+  .gm-f {
+    background: rgba(255, 45, 85, 0.12);
+    color: var(--red);
+  }
+
+  .gm-dash {
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+  }
+
+  /* ── MINI TREND ── */
+  .mini-vulns {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── PAGE HEADER ── -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Scan <span>History</span></h1>
+    <div class="page-subtitle">// {{ pagination.total | default(247) }} SCANS ON RECORD</div>
+  </div>
+  <a href="{{ url_for('scan.new_scan') }}" class="btn-threat btn-primary-threat">
+    <i class="fa-solid fa-plus"></i>
+    New Scan
+  </a>
+</div>
+
+<!-- ── CONTROLS ── -->
+<div class="history-controls">
+  <div class="search-wrap">
+    <i class="fa-solid fa-search"></i>
+    <input type="text" class="form-control-threat search-input" id="searchInput" placeholder="Search by domain or URL…"
+      oninput="filterHistory(this.value)" />
+  </div>
+  <select class="form-control-threat form-select-threat" style="width:auto;" id="statusFilter"
+    onchange="applyFilters()">
+    <option value="all">All Status</option>
+    <option value="complete">Complete</option>
+    <option value="running">Running</option>
+    <option value="paused">Paused</option>
+    <option value="error">Error</option>
+    <option value="stopped">Stopped</option>
+  </select>
+  <select class="form-control-threat form-select-threat" style="width:auto;" id="dateFilter" onchange="applyFilters()">
+    <option value="all">All Dates</option>
+    <option value="today">Today</option>
+    <option value="week">This Week</option>
+    <option value="month">This Month</option>
+  </select>
+</div>
+
+<!-- ── TABLE ── -->
+<div class="card-base">
+
+  <!-- Table Header -->
+  <div
+    style="display:grid;grid-template-columns:auto 1fr auto auto auto auto;align-items:center;gap:16px;padding:10px 20px;background:var(--bg-elevated);border-bottom:1px solid var(--border);">
+    <div onclick="toggleSelectAll()" style="cursor:pointer;">
+      <div id="selectAllBox" class="history-select-box"><i class="fa-solid fa-check"></i></div>
+    </div>
+    <div
+      style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-muted);text-transform:uppercase;">
+      Target / Date</div>
+    <div
+      style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-muted);text-transform:uppercase;text-align:center;">
+      Status</div>
+    <div
+      style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-muted);text-transform:uppercase;text-align:center;">
+      Grade</div>
+    <div
+      style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-muted);text-transform:uppercase;text-align:center;">
+      Findings</div>
+    <div
+      style="font-family:var(--mono);font-size:10px;letter-spacing:0.15em;color:var(--text-muted);text-transform:uppercase;text-align:center;">
+      Actions</div>
+  </div>
+
+  <!-- Bulk Action Bar -->
+  <div class="bulk-bar" id="bulkBar">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--cyan);" id="selectedCount">0 selected</span>
+    <button class="btn-threat btn-danger-threat btn-sm-threat" onclick="bulkDelete()">
+      <i class="fa-solid fa-trash"></i> Delete Selected
+    </button>
+    <button class="btn-threat btn-ghost btn-sm-threat" onclick="clearSelection()">Cancel</button>
+  </div>
+
+  <!-- Rows -->
+  <div id="historyRows">
+    {% set sample_history = [
+    {'id':247,'target':'https://test.shop','status':'running','grade':'—','crit':1,'high':2,'med':3,'date':'Feb 17,
+    14:45','duration':'Active','mode':'Active','depth':3},
+    {'id':246,'target':'https://example.com','status':'complete','grade':'B','crit':2,'high':5,'med':8,'date':'Feb 17,
+    12:30','duration':'4m 23s','mode':'Active','depth':3},
+    {'id':245,'target':'https://portal.internal','status':'complete','grade':'A','crit':0,'high':1,'med':4,'date':'Feb
+    16, 18:11','duration':'2m 57s','mode':'Passive','depth':2},
+    {'id':244,'target':'https://app.company.io','status':'paused','grade':'—','crit':0,'high':0,'med':1,'date':'Feb 15,
+    09:00','duration':'Paused','mode':'Active','depth':5},
+    {'id':243,'target':'https://blog.example.net','status':'error','grade':'—','crit':0,'high':0,'med':0,'date':'Feb 14,
+    22:14','duration':'0m 12s','mode':'Active','depth':3},
+    {'id':242,'target':'https://shop.demo.com','status':'complete','grade':'F','crit':5,'high':9,'med':11,'date':'Feb
+    14, 15:30','duration':'8m 41s','mode':'Active','depth':4},
+    {'id':241,'target':'https://api.service.io','status':'complete','grade':'C','crit':1,'high':3,'med':6,'date':'Feb
+    13, 11:00','duration':'3m 18s','mode':'Active','depth':3},
+    {'id':240,'target':'https://login.test.local','status':'complete','grade':'D','crit':3,'high':6,'med':4,'date':'Feb
+    12, 08:45','duration':'5m 52s','mode':'Active','depth':4},
+    ] %}
+
+    {% for scan in scans | default(sample_history) %}
+    <div class="history-row" data-id="{{ scan.id }}" data-status="{{ scan.status }}" data-target="{{ scan.target }}">
+      <div class="history-select" onclick="toggleRow(this.closest('.history-row'))">
+        <input type="checkbox" />
+        <div class="history-select-box"><i class="fa-solid fa-check"></i></div>
+      </div>
+
+      <div class="history-target">
+        <div class="target-url">{{ scan.target }}</div>
+        <div class="target-meta">
+          <span class="target-meta-item">
+            <i class="fa-regular fa-calendar"></i>
+            {{ scan.date }}
+          </span>
+          <span class="target-meta-item">
+            <i class="fa-solid fa-stopwatch"></i>
+            {{ scan.duration }}
+          </span>
+          <span class="target-meta-item">
+            <i class="fa-solid fa-layer-group"></i>
+            Depth {{ scan.depth }}
+          </span>
+          <span class="target-meta-item">
+            <i class="fa-solid fa-{% if scan.mode == 'Active' %}bolt{% else %}eye{% endif %}"></i>
+            {{ scan.mode }}
+          </span>
+          <span class="target-meta-item">
+            <i class="fa-solid fa-hashtag"></i>
+            {{ scan.id }}
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <span class="status-pill status-{{ scan.status }}">{{ scan.status }}</span>
+      </div>
+
+      <div style="text-align:center;">
+        <span
+          class="grade-mini gm-{{ scan.grade | lower | replace('—','dash') | replace('+','') | replace('-','') }}">{{
+          scan.grade }}</span>
+      </div>
+
+      <div>
+        <div class="mini-vulns">
+          <span class="text-red">{{ scan.crit }}</span>
+          <span class="text-muted">/</span>
+          <span style="color:#ff6400">{{ scan.high }}</span>
+          <span class="text-muted">/</span>
+          <span class="text-amber">{{ scan.med }}</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text-muted);margin-top:1px;">C / H / M</div>
+      </div>
+
+      <div style="display:flex;gap:4px;justify-content:flex-end;">
+        {% if scan.status in ['running', 'paused'] %}
+        <a href="{{ url_for('scan.progress', scan_id=scan.id) }}" class="action-btn primary" title="Live Progress">
+          <i class="fa-solid fa-wave-pulse"></i>
+        </a>
+        {% endif %}
+        {% if scan.status == 'complete' %}
+        <a href="{{ url_for('results.view', scan_id=scan.id) }}" class="action-btn primary" title="View Results">
+          <i class="fa-solid fa-eye"></i>
+        </a>
+        <a href="{{ url_for('results.generate_pdf', scan_id=scan.id) }}" class="action-btn" title="Download PDF">
+          <i class="fa-solid fa-file-pdf"></i>
+        </a>
+        {% endif %}
+        <button class="action-btn danger" title="Delete" onclick="deleteScan({{ scan.id }})">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fa-solid fa-radar empty-icon"></i>
+      <div class="empty-title">No Scans Yet</div>
+      <div style="font-size:13px;margin-bottom:20px;">Start your first scan to see results here.</div>
+      <a href="{{ url_for('scan.new_scan') }}" class="btn-threat btn-primary-threat">
+        <i class="fa-solid fa-plus"></i>
+        New Scan
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination-bar">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--text-muted);">
+      Showing 1–{{ scans | length | default(8) }} of {{ pagination.total | default(247) }}
+    </span>
+    <div style="display:flex;gap:4px;">
+      <a href="?page={{ (pagination.page | default(1)) - 1 }}" class="page-btn">‹</a>
+      {% for p in range(1, (pagination.pages | default(31)) + 1) %}
+      {% if p <= 3 or p>= (pagination.pages | default(31)) - 1 or p == pagination.page | default(1) %}
+        <a href="?page={{ p }}" class="page-btn {% if p == pagination.page | default(1) %}active{% endif %}">{{ p }}</a>
+        {% elif p == 4 and pagination.page | default(1) > 5 %}
+        <span class="page-btn" style="pointer-events:none;border:none;">…</span>
+        {% endif %}
+        {% endfor %}
+        <a href="?page={{ (pagination.page | default(1)) + 1 }}" class="page-btn">›</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // ── ROW SELECTION ──
+  let selectedIds = new Set();
+
+  function toggleRow(row) {
+    const id = row.dataset.id;
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+      row.classList.remove('selected');
+    } else {
+      selectedIds.add(id);
+      row.classList.add('selected');
+    }
+    updateBulkBar();
+  }
+
+  function toggleSelectAll() {
+    const rows = document.querySelectorAll('.history-row');
+    const allSelected = selectedIds.size === rows.length;
+    rows.forEach(r => {
+      if (allSelected) { selectedIds.delete(r.dataset.id); r.classList.remove('selected'); }
+      else { selectedIds.add(r.dataset.id); r.classList.add('selected'); }
+    });
+    updateBulkBar();
+  }
+
+  function clearSelection() {
+    selectedIds.clear();
+    document.querySelectorAll('.history-row').forEach(r => r.classList.remove('selected'));
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const bar = document.getElementById('bulkBar');
+    document.getElementById('selectedCount').textContent = `${selectedIds.size} selected`;
+    bar.classList.toggle('visible', selectedIds.size > 0);
+  }
+
+  // ── FILTER / SEARCH ──
+  function applyFilters() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+    document.querySelectorAll('.history-row').forEach(row => {
+      const matchTarget = row.dataset.target.toLowerCase().includes(query);
+      const matchStatus = status === 'all' || row.dataset.status === status;
+      row.style.display = (matchTarget && matchStatus) ? '' : 'none';
+    });
+  }
+
+  function filterHistory(q) { applyFilters(); }
+
+  // ── ACTIONS ──
+  async function deleteScan(id) {
+    if (!confirm(`Delete scan #${id}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/scans/${id}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.querySelector(`[data-id="${id}"]`)?.remove();
+      showToast('Scan deleted.', 'success');
+    } else {
+      showToast('Delete failed.', 'error');
+    }
+  }
+
+  async function bulkDelete() {
+    if (!confirm(`Delete ${selectedIds.size} scans? This cannot be undone.`)) return;
+    for (const id of selectedIds) await deleteScan(id);
+    clearSelection();
+  }
+</script>
+{% endblock %}

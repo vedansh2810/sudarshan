@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Scan Progress{% endblock %}
+{% block page_title %}Live Scan{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}" style="color:var(--text-muted)">Dashboard</a></li>
+<li class="breadcrumb-item active">Scan #{{ scan['id'] }}</li>
+{% endblock %}
+{% block extra_css %}
+<style>
+.console-wrap { background: #050510; border: 1px solid rgba(0,212,170,0.2); border-radius: 14px; overflow: hidden; }
+.console-header { background: rgba(0,212,170,0.05); border-bottom: 1px solid rgba(0,212,170,0.15); padding: 12px 18px; display: flex; align-items: center; gap: 10px; }
+.console-dot { width: 12px; height: 12px; border-radius: 50%; }
+.console-body { padding: 16px 18px; height: 380px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.7; }
+.log-info { color: #4ade80; }
+.log-warning { color: #fbbf24; }
+.log-error { color: #f87171; }
+.log-success { color: #00d4aa; }
+.log-time { color: #334155; font-size: 11px; margin-right: 8px; }
+.progress-bar-custom { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #00d4aa, #7c3aed); transition: width 0.5s ease; }
+.progress-bg { background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+.stat-mini { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.stat-mini-val { font-size: 26px; font-weight: 800; color: var(--accent); }
+.stat-mini-lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.scan-status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.pulse { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.finding-item { background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 13px; animation: slideIn 0.3s ease; }
+@keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.complete-banner { background: linear-gradient(135deg, rgba(0,212,170,0.1), rgba(124,58,237,0.1)); border: 1px solid rgba(0,212,170,0.3); border-radius: 14px; padding: 24px; text-align: center; margin-bottom: 20px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-8">
+        <!-- Status Bar -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">{{ scan['target_url'] }}</div>
+                        <span class="scan-status" id="status-badge" style="background:rgba(59,130,246,0.15);color:#60a5fa;">
+                            <span class="pulse">●</span> <span id="status-text">Initializing...</span>
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button id="btn-pause" class="btn btn-sm btn-dark-outline" onclick="pauseScan()">
+                            <i class="fas fa-pause me-1"></i>Pause
+                        </button>
+                        <button id="btn-resume" class="btn btn-sm btn-dark-outline d-none" onclick="resumeScan()">
+                            <i class="fas fa-play me-1"></i>Resume
+                        </button>
+                        <button id="btn-stop" class="btn btn-sm" style="background:rgba(220,38,38,0.15);border:1px solid rgba(220,38,38,0.3);color:#f87171;" onclick="stopScan()">
+                            <i class="fas fa-stop me-1"></i>Stop
+                        </button>
+                    </div>
+                </div>
+                <div class="progress-bg">
+                    <div class="progress-bar-custom" id="progress-bar" style="width: 0%"></div>
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between;">
+                    <span id="progress-label">Starting...</span>
+                    <span id="progress-pct">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Console -->
+        <div class="console-wrap mb-4">
+            <div class="console-header">
+                <div class="console-dot" style="background:#f87171;"></div>
+                <div class="console-dot" style="background:#fbbf24;"></div>
+                <div class="console-dot" style="background:#4ade80;"></div>
+                <span style="color:var(--text-muted);font-size:12px;margin-left:8px;font-family:monospace;">sudarshan-scanner@terminal ~ </span>
+                <span style="color:var(--accent);font-family:monospace;font-size:12px;">scan #{{ scan['id'] }}</span>
+            </div>
+            <div class="console-body" id="console">
+                <div class="log-info">[ Sudarshan Web Vulnerability Scanner v1.0 ]</div>
+                <div class="log-info">[ Target: {{ scan['target_url'] }} ]</div>
+                <div class="log-info">[ Connecting to SSE stream... ]</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Live Stats -->
+        <div class="row g-3 mb-4">
+            <div class="col-6">
+                <div class="stat-mini">
+                    <div class="stat-mini-val" id="stat-urls">{{ scan['total_urls'] or 0 }}</div>
+                    <div class="stat-mini-lbl">URLs Found</div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="stat-mini">
+                    <div class="stat-mini-val" id="stat-tested">{{ scan['tested_urls'] or 0 }}</div>
+                    <div class="stat-mini-lbl">URLs Tested</div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="stat-mini">
+                    <div class="stat-mini-val" style="color:#f87171" id="stat-vulns">{{ scan['vuln_count'] or 0 }}</div>
+                    <div class="stat-mini-lbl">Vulnerabilities</div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="stat-mini">
+                    <div class="stat-mini-val" id="stat-elapsed">{{ scan['duration'] or 0 }}s</div>
+                    <div class="stat-mini-lbl">Elapsed</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scan Info -->
+        <div class="card mb-4">
+            <div class="card-header"><div class="card-title">Scan Details</div></div>
+            <div class="card-body" style="font-size:13px;">
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text-muted)">Mode</span>
+                    <span style="font-weight:600;">{{ scan['scan_mode'] | title }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text-muted)">Speed</span>
+                    <span style="font-weight:600;">{{ scan['scan_speed'] | title }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text-muted)">Depth</span>
+                    <span style="font-weight:600;">{{ scan['crawl_depth'] }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;">
+                    <span style="color:var(--text-muted)">Started</span>
+                    <span style="font-weight:600;">{{ scan['started_at'][:16] if scan['started_at'] else 'Now' }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Findings -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Live Findings</div>
+                <span id="finding-count" style="background:rgba(220,38,38,0.15);color:#f87171;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">0</span>
+            </div>
+            <div class="card-body" id="findings-list" style="max-height:280px;overflow-y:auto;">
+                <div style="text-align:center;color:var(--text-muted);padding:20px;font-size:13px;">
+                    <i class="fas fa-shield-alt" style="font-size:24px;opacity:0.3;margin-bottom:8px;display:block;"></i>
+                    No findings yet
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Complete banner (hidden) -->
+<div class="complete-banner d-none" id="complete-banner">
+    <i class="fas fa-check-circle" style="font-size:48px;color:var(--accent);margin-bottom:16px;"></i>
+    <h3 style="font-size:22px;font-weight:800;">Scan Complete!</h3>
+    <p style="color:var(--text-muted);margin-bottom:16px;">Security Score: <span id="final-score" style="font-size:28px;font-weight:800;"></span></p>
+    <div class="d-flex gap-3 justify-content-center">
+        <a href="#" id="results-link" class="btn btn-accent px-4">
+            <i class="fas fa-eye me-2"></i>View Results
+        </a>
+        <a href="#" id="pdf-link" class="btn btn-dark-outline px-4">
+            <i class="fas fa-file-pdf me-2"></i>Download PDF
+        </a>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const scanId = {{ scan['id'] }};
+const console_el = document.getElementById('console');
+let findingCount = {{ scan['vuln_count'] or 0 }};
+// Calculate elapsed from actual scan start time
+const scanStartedAt = new Date('{{ scan["started_at"] }}');
+let elapsed = Math.max(0, Math.floor((Date.now() - scanStartedAt.getTime()) / 1000));
+let elapsedTimer;
+
+function appendLog(msg, level) {
+    const line = document.createElement('div');
+    const time = new Date().toTimeString().slice(0,8);
+    line.innerHTML = `<span class="log-time">[${time}]</span><span class="log-${level}">${escHtml(msg)}</span>`;
+    console_el.appendChild(line);
+    console_el.scrollTop = console_el.scrollHeight;
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updateProgress(data) {
+    const total = data.total || 1;
+    const tested = data.tested || 0;
+    const pct = Math.min(Math.round((tested / total) * 100), 99);
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent = pct + '%';
+    document.getElementById('progress-label').textContent = 
+        data.phase === 'crawling' ? `Crawling: ${total} URLs discovered` : `Testing: ${tested}/${total} URLs`;
+    document.getElementById('stat-urls').textContent = total;
+    document.getElementById('stat-tested').textContent = tested;
+    document.getElementById('stat-vulns').textContent = data.findings || 0;
+}
+
+function addFinding(f) {
+    findingCount++;
+    document.getElementById('finding-count').textContent = findingCount;
+    const sevColors = { critical:'#f87171', high:'#fb923c', medium:'#fbbf24', low:'#4ade80', info:'#60a5fa' };
+    const color = sevColors[f.severity] || '#94a3b8';
+    const list = document.getElementById('findings-list');
+    if (list.querySelector('div[style*="text-align"]')) list.innerHTML = '';
+    const item = document.createElement('div');
+    item.className = 'finding-item';
+    item.innerHTML = `<div style="font-weight:600;color:${color};">${escHtml(f.name)}</div><div style="color:var(--text-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(f.url)}</div>`;
+    list.appendChild(item);
+    list.scrollTop = list.scrollHeight;
+}
+
+function onComplete(data) {
+    document.getElementById('progress-bar').style.width = '100%';
+    document.getElementById('progress-pct').textContent = '100%';
+    clearInterval(elapsedTimer);
+    document.getElementById('btn-pause').classList.add('d-none');
+    document.getElementById('btn-stop').classList.add('d-none');
+    
+    const scoreColors = {'A':'#4ade80','B':'#a3e635','C':'#fbbf24','D':'#fb923c','F':'#f87171'};
+    const score = data.score || 'N/A';
+    const scoreEl = document.getElementById('final-score');
+    scoreEl.textContent = score;
+    scoreEl.style.color = scoreColors[score] || '#94a3b8';
+    
+    document.getElementById('results-link').href = `/scan/${data.scan_id}/results`;
+    document.getElementById('pdf-link').href = `/scan/${data.scan_id}/report/pdf`;
+    document.getElementById('complete-banner').classList.remove('d-none');
+    
+    const badge = document.getElementById('status-badge');
+    badge.style.background = 'rgba(22,163,74,0.15)';
+    badge.style.color = '#4ade80';
+    document.getElementById('status-text').textContent = 'Completed';
+    badge.querySelector('.pulse').style.display = 'none';
+}
+
+// Start elapsed timer — resume from calculated elapsed
+document.getElementById('stat-elapsed').textContent = elapsed + 's';
+elapsedTimer = setInterval(() => {
+    elapsed++;
+    document.getElementById('stat-elapsed').textContent = elapsed + 's';
+}, 1000);
+
+// SSE connection
+const evtSource = new EventSource(`/scan/${scanId}/stream`);
+evtSource.onmessage = (e) => {
+    try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'log') {
+            appendLog(msg.data, msg.level || 'info');
+        } else if (msg.type === 'progress') {
+            updateProgress(msg.data);
+        } else if (msg.type === 'finding') {
+            addFinding(msg.data);
+        } else if (msg.type === 'complete') {
+            appendLog('[✓] Scan complete! Redirecting to results...', 'success');
+            evtSource.close();
+            setTimeout(() => onComplete(msg.data), 500);
+        }
+    } catch(err) {}
+};
+evtSource.onerror = () => {
+    appendLog('[~] Stream disconnected', 'warning');
+    evtSource.close();
+};
+
+async function pauseScan() {
+    const r = await fetch(`/scan/${scanId}/pause`, {method:'POST'});
+    if ((await r.json()).success) {
+        document.getElementById('btn-pause').classList.add('d-none');
+        document.getElementById('btn-resume').classList.remove('d-none');
+        document.getElementById('status-text').textContent = 'Paused';
+    }
+}
+async function resumeScan() {
+    const r = await fetch(`/scan/${scanId}/resume`, {method:'POST'});
+    if ((await r.json()).success) {
+        document.getElementById('btn-resume').classList.add('d-none');
+        document.getElementById('btn-pause').classList.remove('d-none');
+        document.getElementById('status-text').textContent = 'Running';
+    }
+}
+async function stopScan() {
+    if (!confirm('Stop this scan?')) return;
+    await fetch(`/scan/${scanId}/stop`, {method:'POST'});
+    document.getElementById('status-text').textContent = 'Stopped';
+    evtSource.close();
+}
+</script>
+{% endblock %}
