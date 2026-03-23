@@ -293,6 +293,83 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
                             remediation=finding['remediation']
                         )
                         track_vulnerability(finding['severity'], finding.get('vuln_type', 'unknown'))
+
+                        # AI analysis pipeline (non-blocking, best-effort)
+                        try:
+                            from app.ai.smart_engine import get_smart_engine
+                            from app.ai.analyzer import analyze_vulnerability as ai_analyze
+                            _engine = get_smart_engine()
+
+                            vuln_info = {
+                                'vuln_type': finding['vuln_type'],
+                                'severity': finding['severity'],
+                                'url': finding['affected_url'],
+                                'parameter': finding['parameter'],
+                                'payload': finding['payload'],
+                                'evidence': finding.get('description', ''),
+                            }
+
+                            # Step 1: LLM analysis
+                            ai_result = ai_analyze(vuln_info)
+
+                            from app.models.database import db as _db, VulnerabilityModel
+                            latest = VulnerabilityModel.query.filter_by(
+                                scan_id=scan_id,
+                                vuln_type=finding['vuln_type'],
+                                affected_url=finding['affected_url']
+                            ).order_by(VulnerabilityModel.id.desc()).first()
+
+                            if latest:
+                                if ai_result:
+                                    latest.ai_analysis = json.dumps(ai_result)
+
+                                # Enrich remediation with PortSwigger
+                                if finding.get('remediation'):
+                                    enriched = _engine.enrich_remediation(
+                                        finding['vuln_type'], finding['remediation'])
+                                    if enriched:
+                                        latest.remediation = enriched
+
+                                # Step 2: ML + LLM false-positive verification
+                                try:
+                                    fp_features = {
+                                        'payload_length': len(finding.get('payload', '') or ''),
+                                        'payload_special_chars': sum(1 for c in (finding.get('payload', '') or '') if c in "'\"\u003c\u003e;&|`$(){}[]\\"),
+                                        'payload_has_script_tag': 1 if '\u003cscript' in (finding.get('payload', '') or '').lower() else 0,
+                                        'payload_has_sql_keyword': 1 if any(kw in (finding.get('payload', '') or '').upper() for kw in ('SELECT', 'UNION', 'DROP', 'SLEEP')) else 0,
+                                        'payload_has_encoding': 1 if '%' in (finding.get('payload', '') or '') else 0,
+                                        'baseline_status': 200, 'baseline_length': 0,
+                                        'test_status': 200, 'test_length': 0,
+                                        'response_time': 0, 'status_changed': 0,
+                                        'length_diff': 0, 'length_ratio': 0,
+                                        'error_count': 0, 'has_db_error': 0,
+                                        'payload_reflected': 0,
+                                    }
+                                    verdict, confidence, reasoning = _engine.verify_finding(
+                                        vuln_info, fp_features)
+                                    if verdict == 'false_positive':
+                                        latest.likely_false_positive = True
+                                        latest.fp_confidence = confidence
+                                        emit('log',
+                                             f'[*] AI: {finding["name"]} marked as likely FP ({confidence:.0%})',
+                                             'info')
+                                    elif verdict == 'needs_manual_review':
+                                        latest.fp_confidence = confidence
+                                except Exception:
+                                    pass
+
+                                # Step 3: Attack narrative
+                                try:
+                                    narrative = _engine.generate_attack_narrative(vuln_info)
+                                    if narrative:
+                                        latest.ai_narrative = json.dumps(narrative)
+                                except Exception:
+                                    pass
+
+                                _db.session.commit()
+                        except Exception as ai_err:
+                            logger.debug(f"AI analysis skipped in Celery: {ai_err}")
+
                         sev = finding['severity'].upper()
                         emit('log',
                              f'[X] FOUND: {finding["name"]} ({sev}) at {finding["affected_url"][:50]}',

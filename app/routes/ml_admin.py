@@ -135,17 +135,38 @@ def label_vulnerability(vuln_id):
 
     # Also create a ScanAttempt record for ML training
     try:
-        ScanAttempt.create(
+        attempt = ScanAttempt.create(
             scan_id=vuln.scan_id,
-            url=vuln.affected_url or '',
-            parameter=vuln.parameter or '',
-            payload=(vuln.payload or '')[:500],
-            vulnerability_type=vuln.vuln_type,
-            scanner_module='manual_label',
-            is_true_positive=is_tp,
-            verified_by=session.get('username', 'admin'),
-            notes=data.get('notes', f'Manually labeled via ML admin'),
+            request_data={
+                'url': vuln.affected_url or '',
+                'parameter': vuln.parameter or '',
+                'payload': (vuln.payload or '')[:500],
+                'method': 'GET',
+                'context': 'manual_label',
+            },
+            response_data={
+                'status_code': None,
+                'content_length': None,
+                'response_time': None,
+                'error_patterns': [],
+                'reflection_detected': False,
+            },
+            detection_result={
+                'vulnerability_found': True,
+                'vulnerability_type': vuln.vuln_type,
+                'confidence': 1.0 if data.get('confident', True) else 0.8,
+                'technique': 'manual_verification',
+                'severity': vuln.severity,
+            },
+            features={
+                'payload_length': len(vuln.payload or ''),
+                'manual_label': True,
+                'labeled_by': session.get('username', 'admin'),
+            },
         )
+        # Apply the label immediately
+        ScanAttempt.label(attempt.id, is_tp, session.get('username', 'admin'),
+                          data.get('notes', 'Manually labeled via ML admin'))
     except Exception as e:
         logger.debug(f'ScanAttempt creation skipped: {e}')
 

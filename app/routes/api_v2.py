@@ -388,18 +388,19 @@ def download_report(scan_id, fmt):
         return _json_error('Invalid format. Use "pdf" or "html".')
 
     # Reuse existing report generators
-    from app.routes.results import _generate_pdf_report, _generate_html_report
+    from app.routes.results import _generate_pdf_report, _generate_html_report, _get_ai_executive_summary
     vulns = Vulnerability.get_by_scan(scan_id)
+    ai_summary = _get_ai_executive_summary(scan, vulns)
 
     if fmt == 'pdf':
-        pdf_bytes = _generate_pdf_report(scan, vulns)
+        pdf_bytes = _generate_pdf_report(scan, vulns, ai_summary=ai_summary)
         return Response(
             pdf_bytes,
             mimetype='application/pdf',
             headers={'Content-Disposition': f'attachment; filename=sudarshan-report-{scan_id}.pdf'}
         )
     else:
-        html = _generate_html_report(scan, vulns)
+        html = _generate_html_report(scan, vulns, ai_summary=ai_summary)
         return Response(
             html,
             mimetype='text/html',

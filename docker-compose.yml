@@ -16,9 +16,8 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
     depends_on:
       redis:
         condition: service_healthy
@@ -46,8 +45,8 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
     depends_on:
       redis:
         condition: service_healthy
