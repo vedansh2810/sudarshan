@@ -8,8 +8,8 @@ celery = Celery('sudarshan')
 def init_celery(app):
     """Configure the module-level Celery instance with Flask app config."""
     celery.conf.update(
-        broker_url=app.config.get('broker_url', 'redis://localhost:6379/0'),
-        result_backend=app.config.get('result_backend', 'redis://localhost:6379/0'),
+        broker_url=app.config.get('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
+        result_backend=app.config.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0'),
         task_serializer='json',
         accept_content=['json'],
         result_serializer='json',

@@ -1,6 +1,10 @@
 import re
+import logging
 from urllib.parse import urlparse, parse_qs
 from app.scanner.vulnerabilities.base import BaseScanner
+from app.scanner.payload_manager import get_payload_manager
+
+logger = logging.getLogger(__name__)
 
 
 class CommandInjectionScanner(BaseScanner):
@@ -8,6 +12,31 @@ class CommandInjectionScanner(BaseScanner):
     output-based and time-based blind detection."""
 
     # ── Payloads ─────────────────────────────────────────────────────
+
+    def __init__(self, session=None, timeout=8, delay=0.5):
+        super().__init__(session, timeout, delay)
+        try:
+            self.payload_manager = get_payload_manager()
+            pm_payloads = self.payload_manager.get_payloads('command_injection', source='both')
+            existing = set(self.LINUX_OUTPUT_PAYLOADS + self.WINDOWS_OUTPUT_PAYLOADS)
+            extra = [p for p in pm_payloads if p not in existing]
+            self.LINUX_OUTPUT_PAYLOADS = list(self.LINUX_OUTPUT_PAYLOADS) + extra
+            stats = self.payload_manager.get_stats()
+            count = stats['total'].get('command_injection', 0)
+            logger.info(f'Command Injection: {count} payloads available ({len(extra)} new from PayloadManager)')
+        except Exception as e:
+            self.payload_manager = None
+            logger.debug(f'PayloadManager not available: {e}')
+
+        # AI-generated smart payloads
+        try:
+            smart = self._get_smart_payloads('command_injection')
+            if smart:
+                existing_set = set(self.LINUX_OUTPUT_PAYLOADS + self.WINDOWS_OUTPUT_PAYLOADS)
+                new_smart = [p for p in smart if p not in existing_set]
+                self.LINUX_OUTPUT_PAYLOADS = list(self.LINUX_OUTPUT_PAYLOADS) + new_smart
+        except Exception:
+            pass
 
     # Output-based: Linux
     LINUX_OUTPUT_PAYLOADS = [
@@ -315,7 +344,7 @@ class CommandInjectionScanner(BaseScanner):
 
     def _make_finding(self, result):
         technique = result['technique']
-        return {
+        finding = {
             'vuln_type': 'command_injection',
             'name': f'OS Command Injection ({technique})',
             'description': (
@@ -338,3 +367,6 @@ class CommandInjectionScanner(BaseScanner):
                 'Apply strict input validation. Run with minimal OS privileges.'
             )
         }
+        if 'difficulty' in result:
+            finding['difficulty'] = result['difficulty']
+        return finding

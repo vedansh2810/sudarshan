@@ -9,10 +9,13 @@ import threading
 import queue
 import time
 import json
-import copy
 import logging
+import requests as requests_lib
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
+from flask import current_app
 
 from app.config import Config
 from app.scanner.crawler import Crawler
@@ -23,10 +26,20 @@ from app.scanner.vulnerabilities.security_headers import SecurityHeadersScanner
 from app.scanner.vulnerabilities.directory_traversal import DirectoryTraversalScanner
 from app.scanner.vulnerabilities.command_injection import CommandInjectionScanner
 from app.scanner.vulnerabilities.idor import IDORScanner, DirectoryListingScanner
+from app.scanner.vulnerabilities.xxe import XXEScanner
+from app.scanner.vulnerabilities.ssrf import SSRFScanner
+from app.scanner.vulnerabilities.open_redirect import OpenRedirectScanner
+from app.scanner.vulnerabilities.cors import CORSScanner
+from app.scanner.vulnerabilities.clickjacking import ClickjackingScanner
+from app.scanner.vulnerabilities.ssti import SSTIScanner
+from app.scanner.vulnerabilities.jwt_attacks import JWTAttackScanner
+from app.scanner.vulnerabilities.broken_auth import BrokenAuthScanner
 from app.scanner.dvwa_auth import DVWAAuth
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
-from app.models.database import execute_db
+
+from app.monitoring.metrics import track_scan_started, track_scan_completed, track_vulnerability
+from app.ai.analyzer import analyze_vulnerability as ai_analyze
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +51,7 @@ class ScanManager:
     def __init__(self):
         self.active_scans = {}  # scan_id -> scan context (threading mode only)
         self.sse_queues = {}    # scan_id -> list of queues (threading mode only)
+        self.event_history = defaultdict(list)  # scan_id -> list of serialized SSE events
         self._redis = None
         self._redis_checked = False
         self._use_celery = False
@@ -123,6 +137,10 @@ class ScanManager:
             ctx['pause_event'].set()
             self.active_scans[scan_id] = ctx
             self.sse_queues[scan_id] = []
+
+            # Capture the Flask app for use in the background thread
+            app = current_app._get_current_object()
+            ctx['_app'] = app
 
             thread = threading.Thread(
                 target=self._run_scan,
@@ -246,6 +264,10 @@ class ScanManager:
         """Check if we're using Redis for SSE."""
         return self._use_celery and self._get_redis() is not None
 
+    def get_event_history(self, scan_id):
+        """Get all previously emitted events for a scan (threading mode only)."""
+        return list(self.event_history.get(scan_id, []))
+
     def get_redis_client(self):
         """Get the Redis client for pub/sub subscriptions."""
         return self._get_redis()
@@ -270,6 +292,8 @@ class ScanManager:
         else:
             # In-memory queue fallback
             serialized = f"data: {json.dumps(msg)}\n\n"
+            # Store in event history for late-joining SSE clients
+            self.event_history[scan_id].append(serialized)
             if scan_id in self.sse_queues:
                 dead_queues = []
                 for q in self.sse_queues[scan_id]:
@@ -309,14 +333,55 @@ class ScanManager:
     # ─── Threading fallback: _run_scan (unchanged from original) ─────────
 
     def _run_scan(self, ctx):
+        app = ctx.get('_app')
+        if app:
+            with app.app_context():
+                self._run_scan_inner(ctx)
+        else:
+            self._run_scan_inner(ctx)
+
+    def _run_scan_inner(self, ctx):
         scan_id = ctx['scan_id']
+        seen_vulns = set()  # (vuln_type, affected_url, parameter) dedup
         target_url = ctx['target_url']
         speed_config = self._get_speed_config(ctx['scan_speed'])
 
         try:
             Scan.update_status(scan_id, 'running')
+            track_scan_started()
             self._emit(scan_id, 'log', f'[+] Starting scan: {target_url}', 'info')
             self._emit(scan_id, 'log', f'[+] Mode: {ctx["scan_mode"]} | Speed: {ctx["scan_speed"]}', 'info')
+
+            # Phase 0: Connectivity pre-check
+            self._emit(scan_id, 'log', '[+] Checking target connectivity...', 'info')
+            target_reachable = False
+            try:
+                precheck_resp = requests_lib.get(
+                    target_url, timeout=speed_config['timeout'],
+                    verify=False, allow_redirects=True,
+                    headers={'User-Agent': 'Sudarshan-Scanner/1.0 (Security Research)'}
+                )
+                target_reachable = True
+                self._emit(scan_id, 'log',
+                    f'[+] Target reachable: HTTP {precheck_resp.status_code} ({len(precheck_resp.text)} bytes)',
+                    'success')
+            except requests_lib.exceptions.Timeout:
+                self._emit(scan_id, 'log',
+                    f'[!] Target unreachable: Connection timed out after {speed_config["timeout"]}s',
+                    'error')
+            except requests_lib.exceptions.ConnectionError as ce:
+                self._emit(scan_id, 'log',
+                    f'[!] Target unreachable: Connection failed — {str(ce)[:120]}',
+                    'error')
+            except Exception as pe:
+                self._emit(scan_id, 'log',
+                    f'[!] Target unreachable: {str(pe)[:120]}',
+                    'error')
+
+            if not target_reachable:
+                self._emit(scan_id, 'log',
+                    '[!] Cannot reach target. Scan will continue with limited checks.',
+                    'warning')
 
             # Phase 1: Crawling
             self._emit(scan_id, 'log', '[+] Phase 1: Crawling target...', 'info')
@@ -327,7 +392,7 @@ class ScanManager:
                 ctx['pause_event'].wait()
                 ctx['total_urls'] = count
                 Scan.update_progress(scan_id, ctx['tested_urls'], len(ctx['findings']))
-                execute_db('UPDATE scans SET total_urls = ? WHERE id = ?', (count, scan_id))
+                Scan.update_total_urls(scan_id, count)
                 self._emit(scan_id, 'log', f'[+] Crawling: {url[:70]}', 'info')
                 self._emit(scan_id, 'progress', {
                     'phase': 'crawling',
@@ -348,18 +413,24 @@ class ScanManager:
                 else:
                     self._emit(scan_id, 'log', '[-] DVWA authentication failed — scanning without auth', 'warning')
 
-            crawler = Crawler(
-                target_url=target_url,
-                max_depth=ctx['crawl_depth'],
-                max_urls=speed_config['max_urls'],
-                timeout=speed_config['timeout'],
-                delay=speed_config['delay'],
-                threads=speed_config.get('threads', 5),
-                session=authenticated_session
-            )
-            ctx['_crawler'] = crawler
+            if target_reachable:
+                crawler = Crawler(
+                    target_url=target_url,
+                    max_depth=ctx['crawl_depth'],
+                    max_urls=speed_config['max_urls'],
+                    timeout=speed_config['timeout'],
+                    delay=speed_config['delay'],
+                    threads=speed_config.get('threads', 5),
+                    session=authenticated_session
+                )
+                ctx['_crawler'] = crawler
 
-            discovered_urls, injectable_points = crawler.crawl(scan_id=scan_id, callback=crawl_callback)
+                discovered_urls, injectable_points = crawler.crawl(scan_id=scan_id, callback=crawl_callback)
+            else:
+                # Target unreachable — skip crawling to avoid wasting time on timeouts
+                discovered_urls = []
+                injectable_points = []
+
             ctx['total_urls'] = len(discovered_urls)
 
             if ctx['stopped']:
@@ -369,6 +440,90 @@ class ScanManager:
             self._emit(scan_id, 'log',
                 f'[+] Crawl complete: {len(discovered_urls)} URLs, {len(injectable_points)} injectable points',
                 'success')
+
+            # When crawler finds 0 URLs, create a fallback injectable point
+            # from the target URL so scanners still have something to test
+            if len(injectable_points) == 0 and target_reachable:
+                self._emit(scan_id, 'log',
+                    '[*] Creating fallback test points from target URL...',
+                    'info')
+                # Add the target URL itself as an injectable point
+                parsed = urlparse(target_url)
+                # Add any query parameters from the target URL
+                if parsed.query:
+                    params = parse_qs(parsed.query, keep_blank_values=True)
+                    for param_name, param_values in params.items():
+                        injectable_points.append({
+                            'name': param_name,
+                            'value': param_values[0] if param_values else '',
+                            'url': target_url
+                        })
+                # Always add the target URL as a base injectable point
+                injectable_points.append({
+                    'type': 'url',
+                    'url': target_url,
+                    'name': '',
+                    'value': ''
+                })
+                # Add common injectable endpoints
+                common_paths = [
+                    '/search?q=test', '/login', '/?id=1', '/?page=1',
+                    '/index.php?id=1', '/product?id=1'
+                ]
+                base = target_url.rstrip('/')
+                for path in common_paths:
+                    full_url = base + path
+                    p = urlparse(full_url)
+                    if p.query:
+                        qp = parse_qs(p.query, keep_blank_values=True)
+                        for pn, pv in qp.items():
+                            injectable_points.append({
+                                'name': pn,
+                                'value': pv[0] if pv else '',
+                                'url': full_url
+                            })
+                discovered_urls.append({'url': target_url, 'status_code': 200, 'depth': 0})
+                ctx['total_urls'] = len(discovered_urls)
+                self._emit(scan_id, 'log',
+                    f'[+] Created {len(injectable_points)} fallback test points',
+                    'info')
+            elif len(discovered_urls) == 0 and not target_reachable:
+                self._emit(scan_id, 'log',
+                    '[!] Warning: Target is unreachable. No URLs to scan.',
+                    'warning')
+
+            # Phase 1.5: AI Reconnaissance (non-blocking)
+            target_context = {}
+            try:
+                from app.ai.smart_engine import get_smart_engine
+                smart_engine = get_smart_engine()
+                self._emit(scan_id, 'log', '[*] AI Reconnaissance: Analyzing target technology stack...', 'info')
+                import requests as _req
+                recon_resp = _req.get(target_url, timeout=10, verify=False)
+                recon_result = smart_engine.reconnaissance(target_url, recon_resp)
+                if recon_result:
+                    target_context = recon_result
+                    ctx['target_context'] = recon_result
+                    tech_info = []
+                    if recon_result.get('language'):
+                        tech_info.append(f"Language: {recon_result['language']}")
+                    if recon_result.get('framework'):
+                        tech_info.append(f"Framework: {recon_result['framework']}")
+                    if recon_result.get('server'):
+                        tech_info.append(f"Server: {recon_result['server']}")
+                    if recon_result.get('waf_detected'):
+                        waf_name = recon_result.get('waf_name', 'Unknown')
+                        tech_info.append(f"WAF: {waf_name}")
+                    if tech_info:
+                        self._emit(scan_id, 'log', f'[+] AI Recon: {" | ".join(tech_info)}', 'success')
+                    if recon_result.get('scan_recommendations'):
+                        for rec in recon_result['scan_recommendations'][:3]:
+                            self._emit(scan_id, 'log', f'[*] AI Recommendation: {rec[:100]}', 'info')
+                else:
+                    self._emit(scan_id, 'log', '[*] AI Recon: Could not determine technology stack', 'info')
+            except Exception as recon_err:
+                logger.debug(f'AI reconnaissance skipped: {recon_err}')
+                self._emit(scan_id, 'log', '[*] AI Recon: Skipped (LLM unavailable)', 'info')
 
             # Phase 2: Vulnerability Scanning
             if ctx['scan_mode'] == 'active':
@@ -383,6 +538,14 @@ class ScanManager:
                     'command_injection': (CommandInjectionScanner, 'Command Injection'),
                     'idor': (IDORScanner, 'IDOR'),
                     'directory_listing': (DirectoryListingScanner, 'Directory Listing'),
+                    'xxe': (XXEScanner, 'XXE Injection'),
+                    'ssrf': (SSRFScanner, 'SSRF'),
+                    'open_redirect': (OpenRedirectScanner, 'Open Redirect'),
+                    'cors': (CORSScanner, 'CORS Misconfiguration'),
+                    'clickjacking': (ClickjackingScanner, 'Clickjacking'),
+                    'ssti': (SSTIScanner, 'Server-Side Template Injection'),
+                    'jwt_attacks': (JWTAttackScanner, 'JWT Vulnerabilities'),
+                    'broken_auth': (BrokenAuthScanner, 'Broken Authentication'),
                 }
 
                 selected = ctx['selected_checks']
@@ -396,13 +559,23 @@ class ScanManager:
                     if ctx['stopped']:
                         return display_name, [], None
                     try:
-                        scanner_session = copy.deepcopy(crawler.session) if crawler.session else None
+                        # Create a fresh session and copy cookies/headers
+                        # instead of deepcopy which breaks transport adapters
+                        if crawler.session:
+                            scanner_session = requests_lib.Session()
+                            scanner_session.cookies.update(crawler.session.cookies)
+                            scanner_session.headers.update(crawler.session.headers)
+                        else:
+                            scanner_session = None
                         scanner = ScannerClass(
                             session=scanner_session,
                             timeout=speed_config['timeout'],
                             delay=speed_config['delay']
                         )
-                        if check_name == 'security_headers':
+                        # Enable ML data collection
+                        scanner.collect_ml_data = True
+                        scanner.current_scan_id = scan_id
+                        if check_name in ('security_headers', 'cors', 'clickjacking'):
                             findings = scanner.scan(target_url, [])
                         else:
                             findings = scanner.scan(target_url, injectable_points)
@@ -429,6 +602,12 @@ class ScanManager:
                             continue
 
                         for finding in findings:
+                            # Deduplicate: same vuln_type + URL + param = skip
+                            dedup_key = (finding['vuln_type'], finding['affected_url'], finding['parameter'])
+                            if dedup_key in seen_vulns:
+                                continue
+                            seen_vulns.add(dedup_key)
+
                             ctx['findings'].append(finding)
                             Vulnerability.create(
                                 scan_id=scan_id,
@@ -446,6 +625,94 @@ class ScanManager:
                                 response_data=finding['response_data'],
                                 remediation=finding['remediation']
                             )
+
+                            # AI analysis (non-blocking, best-effort)
+                            if current_app.config.get('AI_ANALYSIS_ENABLED', True):
+                                try:
+                                    # Use SmartEngine for enriched analysis
+                                    from app.ai.smart_engine import get_smart_engine
+                                    _engine = get_smart_engine()
+
+                                    vuln_info = {
+                                        'vuln_type': finding['vuln_type'],
+                                        'severity': finding['severity'],
+                                        'url': finding['affected_url'],
+                                        'parameter': finding['parameter'],
+                                        'payload': finding['payload'],
+                                        'evidence': finding.get('description', ''),
+                                    }
+
+                                    # Step 1: Standard LLM analysis
+                                    ai_result = ai_analyze(vuln_info)
+
+                                    # Enrich remediation with PortSwigger lab references
+                                    if finding.get('remediation'):
+                                        finding['remediation'] = _engine.enrich_remediation(
+                                            finding['vuln_type'], finding['remediation']
+                                        )
+
+                                    import json as _json
+                                    from app.models.database import db as _db, VulnerabilityModel
+                                    # Update the most recently created vuln
+                                    latest = VulnerabilityModel.query.filter_by(
+                                        scan_id=scan_id,
+                                        vuln_type=finding['vuln_type'],
+                                        affected_url=finding['affected_url']
+                                    ).order_by(VulnerabilityModel.id.desc()).first()
+
+                                    if latest:
+                                        if ai_result:
+                                            latest.ai_analysis = _json.dumps(ai_result)
+                                        if finding.get('remediation'):
+                                            latest.remediation = finding['remediation']
+
+                                        # Step 2: ML + LLM false-positive verification
+                                        try:
+                                            fp_features = {
+                                                'payload_length': len(finding.get('payload', '') or ''),
+                                                'payload_special_chars': sum(1 for c in (finding.get('payload', '') or '') if c in "'\"<>;&|`$(){}[]\\"),
+                                                'payload_has_script_tag': 1 if '<script' in (finding.get('payload', '') or '').lower() else 0,
+                                                'payload_has_sql_keyword': 1 if any(kw in (finding.get('payload', '') or '').upper() for kw in ('SELECT', 'UNION', 'DROP', 'SLEEP')) else 0,
+                                                'payload_has_encoding': 1 if '%' in (finding.get('payload', '') or '') else 0,
+                                                'baseline_status': 200,
+                                                'baseline_length': 0,
+                                                'test_status': 200,
+                                                'test_length': 0,
+                                                'response_time': 0,
+                                                'status_changed': 0,
+                                                'length_diff': 0,
+                                                'length_ratio': 0,
+                                                'error_count': 0,
+                                                'has_db_error': 0,
+                                                'payload_reflected': 0,
+                                            }
+                                            verdict, confidence, reasoning = _engine.verify_finding(
+                                                vuln_info, fp_features
+                                            )
+                                            if verdict == 'false_positive':
+                                                latest.likely_false_positive = True
+                                                latest.fp_confidence = confidence
+                                                self._emit(scan_id, 'log',
+                                                    f'[*] AI: {finding["name"]} marked as likely false positive ({confidence:.0%})',
+                                                    'info')
+                                            elif verdict == 'needs_manual_review':
+                                                latest.fp_confidence = confidence
+                                        except Exception as fp_err:
+                                            logger.debug(f"FP verification skipped: {fp_err}")
+
+                                        # Step 3: Attack narrative generation
+                                        try:
+                                            narrative = _engine.generate_attack_narrative(vuln_info)
+                                            if narrative:
+                                                latest.ai_narrative = _json.dumps(narrative)
+                                        except Exception as narr_err:
+                                            logger.debug(f"Attack narrative skipped: {narr_err}")
+
+                                        _db.session.commit()
+                                except Exception as ai_err:
+                                    logger.debug(f"AI analysis skipped: {ai_err}")
+
+                            track_vulnerability(finding['severity'], finding.get('vuln_type', 'unknown'))
                             sev = finding['severity'].upper()
                             self._emit(scan_id, 'log',
                                 f'[X] FOUND: {finding["name"]} ({sev}) at {finding["affected_url"][:50]}',
@@ -494,6 +761,53 @@ class ScanManager:
                         remediation=finding['remediation']
                     )
 
+            # Phase 3: Post-scan AI Deep Analysis
+            if ctx['findings'] and not ctx.get('stopped'):
+                try:
+                    from app.ai.smart_engine import get_smart_engine
+                    _engine = get_smart_engine()
+                    self._emit(scan_id, 'log', '[*] Phase 3: AI deep analysis of findings...', 'info')
+
+                    # Generate attack narratives for critical/high findings
+                    import json as _json
+                    from app.models.database import db as _db, VulnerabilityModel
+
+                    high_prio = [
+                        f for f in ctx['findings']
+                        if f.get('severity') in ('critical', 'high')
+                    ]
+                    narratives_generated = 0
+                    for finding in high_prio[:5]:  # Cap at 5 to avoid slowdown
+                        try:
+                            narrative = _engine.generate_attack_narrative(finding)
+                            if narrative:
+                                latest = VulnerabilityModel.query.filter_by(
+                                    scan_id=scan_id,
+                                    vuln_type=finding['vuln_type'],
+                                    affected_url=finding['affected_url']
+                                ).order_by(VulnerabilityModel.id.desc()).first()
+                                if latest:
+                                    # Merge narrative into existing ai_analysis
+                                    existing = {}
+                                    if latest.ai_analysis:
+                                        try:
+                                            existing = _json.loads(latest.ai_analysis)
+                                        except Exception:
+                                            pass
+                                    existing['attack_narrative'] = narrative
+                                    latest.ai_analysis = _json.dumps(existing)
+                                    _db.session.commit()
+                                    narratives_generated += 1
+                        except Exception:
+                            pass
+
+                    if narratives_generated:
+                        self._emit(scan_id, 'log',
+                            f'[+] AI deep analysis: Generated {narratives_generated} attack narratives',
+                            'success')
+                except Exception as deep_err:
+                    logger.debug(f'Post-scan deep analysis skipped: {deep_err}')
+
             self._finalize(ctx, discovered_urls)
 
         except Exception as e:
@@ -526,7 +840,9 @@ class ScanManager:
             low=low
         )
 
-        ctx['status'] = 'completed' if not ctx.get('stopped') else 'stopped'
+        status = 'completed' if not ctx.get('stopped') else 'stopped'
+        ctx['status'] = status
+        track_scan_completed(duration, status)
 
         self._emit(scan_id, 'log', f'[+] Scan complete! Score: {score} | Vulnerabilities: {len(findings)}', 'success')
         self._emit(scan_id, 'complete', {
@@ -539,6 +855,20 @@ class ScanManager:
             'low': low,
             'scan_id': scan_id
         }, 'success')
+
+        # Trigger webhooks (best-effort)
+        try:
+            from app.models.webhook import Webhook
+            Webhook.trigger(ctx.get('user_id'), 'scan_complete', {
+                'scan_id': scan_id,
+                'score': score,
+                'duration': duration,
+                'total_vulns': len(findings),
+                'critical': critical,
+                'high': high,
+            })
+        except Exception:
+            pass  # Webhooks are non-critical
 
         if scan_id in self.active_scans:
             del self.active_scans[scan_id]

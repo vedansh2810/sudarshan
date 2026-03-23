@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SUDARSHAN | AI-Powered Web Vulnerability Scanner</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#00e5ff",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#060611",
+                        "accent-purple": "#8b5cf6",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .hero-glow {
+            text-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+        }
+        .grid-pattern {
+            background-image: radial-gradient(circle at 2px 2px, rgba(0, 229, 255, 0.05) 1px, transparent 0);
+            background-size: 40px 40px;
+        }
+        .neon-border:hover {
+            border-color: #00e5ff;
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 selection:bg-primary/30 selection:text-primary">
+<div class="relative min-h-screen overflow-x-hidden grid-pattern">
+<!-- Navigation -->
+<header class="fixed top-0 w-full z-50 border-b border-white/10 bg-background-dark/80 backdrop-blur-md">
+<nav class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-background-dark font-bold">shield</span>
+</div>
+<span class="text-2xl font-bold tracking-tighter text-white">SUDARSHAN</span>
+</div>
+<div class="hidden md:flex items-center gap-10">
+<a class="text-sm font-medium hover:text-primary transition-colors text-slate-300" href="#features">Features</a>
+<a class="text-sm font-medium hover:text-primary transition-colors text-slate-300" href="#how-it-works">How It Works</a>
+<a class="text-sm font-medium hover:text-primary transition-colors text-slate-300" href="#pricing">Pricing</a>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-5 py-2 text-sm font-semibold hover:text-primary transition-colors">Sign In</button>
+<button class="bg-primary text-background-dark px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 transition-all shadow-[0_0_20px_rgba(0,229,255,0.3)]">
+                        Get Started
+                    </button>
+</div>
+</nav>
+</header>
+<!-- Hero Section -->
+<section class="pt-40 pb-20 px-6 max-w-7xl mx-auto">
+<div class="grid lg:grid-cols-2 gap-16 items-center">
+<div class="flex flex-col gap-8">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 w-fit">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+</span>
+<span class="text-[10px] uppercase font-bold tracking-widest text-primary">v2.0 Beta Now Live</span>
+</div>
+<div class="space-y-4">
+<h1 class="text-6xl md:text-8xl font-bold tracking-tighter text-white leading-[0.9] hero-glow">
+                            SUDARSHAN
+                        </h1>
+<p class="text-xl md:text-2xl text-slate-400 font-light max-w-lg leading-relaxed">
+                            AI-Powered Web Vulnerability Scanner - <span class="text-white font-medium">Protect Your Web Applications</span> in real-time.
+                        </p>
+</div>
+<div class="flex flex-wrap gap-4">
+<button class="bg-gradient-to-r from-primary to-cyan-600 text-background-dark px-8 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-transform shadow-xl">
+                            Start Scanning Free
+                        </button>
+<button class="glass-panel text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-white/10 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined">play_circle</span>
+                            View Demo
+                        </button>
+</div>
+<div class="flex items-center gap-4 text-slate-500 text-sm">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-background-dark bg-slate-800" data-alt="User avatar 1"></div>
+<div class="w-8 h-8 rounded-full border-2 border-background-dark bg-slate-700" data-alt="User avatar 2"></div>
+<div class="w-8 h-8 rounded-full border-2 border-background-dark bg-slate-600" data-alt="User avatar 3"></div>
+</div>
+<span>Trusted by 500+ security teams</span>
+</div>
+</div>
+<div class="relative group">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary/30 to-accent-purple/30 rounded-2xl blur-2xl opacity-50 group-hover:opacity-100 transition duration-1000"></div>
+<div class="relative glass-panel rounded-2xl p-4 overflow-hidden shadow-2xl">
+<div class="flex items-center gap-2 mb-4 px-2">
+<div class="flex gap-1.5">
+<div class="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-yellow-500/50"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
+</div>
+<div class="ml-4 h-5 w-32 bg-white/5 rounded"></div>
+</div>
+<div class="aspect-[4/3] bg-background-dark/50 rounded-lg flex flex-col gap-4 p-6 overflow-hidden">
+<div class="flex justify-between items-end gap-2 h-32">
+<div class="w-full bg-primary/20 rounded-t h-[40%]" data-alt="Dashboard bar chart data point 1"></div>
+<div class="w-full bg-primary/40 rounded-t h-[70%]" data-alt="Dashboard bar chart data point 2"></div>
+<div class="w-full bg-primary/60 rounded-t h-[55%]" data-alt="Dashboard bar chart data point 3"></div>
+<div class="w-full bg-primary/30 rounded-t h-[90%]" data-alt="Dashboard bar chart data point 4"></div>
+<div class="w-full bg-primary/50 rounded-t h-[65%]" data-alt="Dashboard bar chart data point 5"></div>
+</div>
+<div class="flex-1 grid grid-cols-2 gap-4">
+<div class="glass-panel p-4 rounded-xl flex flex-col gap-2">
+<span class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Active Threats</span>
+<span class="text-2xl font-bold text-red-400">0</span>
+</div>
+<div class="glass-panel p-4 rounded-xl flex flex-col gap-2">
+<span class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Network Health</span>
+<span class="text-2xl font-bold text-primary">99%</span>
+</div>
+</div>
+<div class="h-32 w-full bg-white/5 rounded-xl border border-white/5 p-4 overflow-hidden">
+<div class="flex flex-col gap-2">
+<div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+<div class="h-full w-2/3 bg-accent-purple shadow-[0_0_10px_#8b5cf6]"></div>
+</div>
+<div class="h-1.5 w-1/2 bg-white/5 rounded-full overflow-hidden">
+<div class="h-full w-3/4 bg-primary shadow-[0_0_10px_#00e5ff]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Stats Bar -->
+<section class="max-w-7xl mx-auto px-6 py-12">
+<div class="glass-panel rounded-2xl grid grid-cols-2 md:grid-cols-4 divide-x divide-white/10 overflow-hidden">
+<div class="p-8 text-center flex flex-col gap-1">
+<span class="text-3xl font-bold text-white">13+</span>
+<span class="text-xs text-slate-500 font-bold uppercase tracking-widest">Vulnerability Checks</span>
+</div>
+<div class="p-8 text-center flex flex-col gap-1">
+<span class="text-3xl font-bold text-white">Real-Time</span>
+<span class="text-xs text-slate-500 font-bold uppercase tracking-widest">Scanning Speed</span>
+</div>
+<div class="p-8 text-center flex flex-col gap-1">
+<span class="text-3xl font-bold text-white">ML-Powered</span>
+<span class="text-xs text-slate-500 font-bold uppercase tracking-widest">Security Analysis</span>
+</div>
+<div class="p-8 text-center flex flex-col gap-1">
+<span class="text-3xl font-bold text-white">99.9%</span>
+<span class="text-xs text-slate-500 font-bold uppercase tracking-widest">Platform Uptime</span>
+</div>
+</div>
+</section>
+<!-- Features Section -->
+<section class="max-w-7xl mx-auto px-6 py-24" id="features">
+<div class="text-center mb-16 space-y-4">
+<h2 class="text-4xl md:text-5xl font-bold text-white tracking-tight">Advanced Cybersecurity Features</h2>
+<p class="text-slate-400 max-w-2xl mx-auto">Our AI-driven engine provides enterprise-grade protection for modern digital assets without the complexity of traditional tools.</p>
+</div>
+<div class="grid md:grid-cols-2 gap-6">
+<!-- Feature 1 -->
+<div class="glass-panel p-8 rounded-2xl border-white/5 hover:border-primary/30 transition-all group neon-border">
+<div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-primary text-3xl">shield</span>
+</div>
+<h3 class="text-xl font-bold text-white mb-3">Deep Vulnerability Scanning</h3>
+<p class="text-slate-400 leading-relaxed">Automated security audits that dive deep into your application's architecture to find SQLi, XSS, and broken access controls.</p>
+</div>
+<!-- Feature 2 -->
+<div class="glass-panel p-8 rounded-2xl border-white/5 hover:border-accent-purple/30 transition-all group">
+<div class="w-12 h-12 rounded-lg bg-accent-purple/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-accent-purple text-3xl">query_stats</span>
+</div>
+<h3 class="text-xl font-bold text-white mb-3">Real-Time Monitoring</h3>
+<p class="text-slate-400 leading-relaxed">Continuous surveillance of your digital perimeter, alerting you the moment a new threat or misconfiguration is detected.</p>
+</div>
+<!-- Feature 3 -->
+<div class="glass-panel p-8 rounded-2xl border-white/5 hover:border-primary/30 transition-all group neon-border">
+<div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-primary text-3xl">psychology</span>
+</div>
+<h3 class="text-xl font-bold text-white mb-3">AI False Positive Reduction</h3>
+<p class="text-slate-400 leading-relaxed">Advanced machine learning models filter out the noise, ensuring your security team only spends time on genuine threats.</p>
+</div>
+<!-- Feature 4 -->
+<div class="glass-panel p-8 rounded-2xl border-white/5 hover:border-accent-purple/30 transition-all group">
+<div class="w-12 h-12 rounded-lg bg-accent-purple/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-accent-purple text-3xl">description</span>
+</div>
+<h3 class="text-xl font-bold text-white mb-3">Professional Reports</h3>
+<p class="text-slate-400 leading-relaxed">Export white-labeled, detailed security findings in PDF, JSON, or HTML formats, ready for compliance and stakeholder reviews.</p>
+</div>
+</div>
+</section>
+<!-- How It Works Section -->
+<section class="max-w-7xl mx-auto px-6 py-24 relative" id="how-it-works">
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+<div class="w-96 h-96 bg-primary blur-[120px] rounded-full"></div>
+</div>
+<div class="relative">
+<div class="text-center mb-16 space-y-4">
+<h2 class="text-4xl md:text-5xl font-bold text-white tracking-tight">Three Steps to Security</h2>
+<p class="text-slate-400">Go from vulnerable to validated in minutes.</p>
+</div>
+<div class="grid md:grid-cols-3 gap-12">
+<div class="text-center space-y-6">
+<div class="w-16 h-16 rounded-full bg-background-dark border-2 border-primary/30 flex items-center justify-center mx-auto text-2xl font-bold text-primary shadow-[0_0_20px_rgba(0,229,255,0.2)]">1</div>
+<h4 class="text-xl font-bold text-white">Configure Scan</h4>
+<p class="text-slate-400">Enter your target URL and define scanning depth with our intuitive setup wizard.</p>
+</div>
+<div class="text-center space-y-6">
+<div class="w-16 h-16 rounded-full bg-background-dark border-2 border-primary/30 flex items-center justify-center mx-auto text-2xl font-bold text-primary shadow-[0_0_20px_rgba(0,229,255,0.2)]">2</div>
+<h4 class="text-xl font-bold text-white">Automated Analysis</h4>
+<p class="text-slate-400">Our AI engine scans and probes your app, executing hundreds of security test vectors.</p>
+</div>
+<div class="text-center space-y-6">
+<div class="w-16 h-16 rounded-full bg-background-dark border-2 border-primary/30 flex items-center justify-center mx-auto text-2xl font-bold text-primary shadow-[0_0_20px_rgba(0,229,255,0.2)]">3</div>
+<h4 class="text-xl font-bold text-white">Get Results</h4>
+<p class="text-slate-400">Download comprehensive reports and follow prioritized remediation guidelines.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="border-t border-white/10 pt-20 pb-10 px-6">
+<div class="max-w-7xl mx-auto grid md:grid-cols-4 gap-12 mb-20">
+<div class="col-span-2 space-y-6">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 bg-primary rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-background-dark font-bold">shield</span>
+</div>
+<span class="text-xl font-bold tracking-tighter text-white">SUDARSHAN</span>
+</div>
+<p class="text-slate-400 max-w-xs leading-relaxed">
+                        Redefining web security through autonomous AI vulnerability analysis. Built for the modern web.
+                    </p>
+</div>
+<div>
+<h5 class="text-white font-bold mb-6">Product</h5>
+<ul class="space-y-4 text-slate-400 text-sm">
+<li><a class="hover:text-primary transition-colors" href="#">Features</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Pricing</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Integrations</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Enterprise</a></li>
+</ul>
+</div>
+<div>
+<h5 class="text-white font-bold mb-6">Company</h5>
+<ul class="space-y-4 text-slate-400 text-sm">
+<li><a class="hover:text-primary transition-colors" href="#">About</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Blog</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Contact</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Security</a></li>
+</ul>
+</div>
+</div>
+<div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 pt-10 border-t border-white/5">
+<p class="text-xs text-slate-500 uppercase tracking-widest font-bold">© 2024 Sudarshan AI. All rights reserved.</p>
+<div class="flex gap-6">
+<a class="text-slate-500 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined text-xl">language</span></a>
+<a class="text-slate-500 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined text-xl">mail</span></a>
+<a class="text-slate-500 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined text-xl">account_tree</span></a>
+</div>
+</div>
+</footer>
+</div>
+</body></html>

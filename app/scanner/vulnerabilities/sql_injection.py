@@ -1,7 +1,11 @@
 import re
+import logging
 import urllib.parse
 from urllib.parse import urlparse, urlencode, parse_qs
 from app.scanner.vulnerabilities.base import BaseScanner
+from app.scanner.payload_manager import get_payload_manager
+
+logger = logging.getLogger(__name__)
 
 
 class SQLInjectionScanner(BaseScanner):
@@ -10,6 +14,33 @@ class SQLInjectionScanner(BaseScanner):
     and POST forms."""
 
     # ── Payloads ─────────────────────────────────────────────────────
+
+    def __init__(self, session=None, timeout=8, delay=0.5):
+        super().__init__(session, timeout, delay)
+        try:
+            self.payload_manager = get_payload_manager()
+            pm_payloads = self.payload_manager.get_payloads('sql_injection', source='both')
+            # Enrich ERROR_PAYLOADS with PayloadManager payloads (instance-level copy)
+            existing = set(self.ERROR_PAYLOADS)
+            extra = [p for p in pm_payloads if p not in existing]
+            self.ERROR_PAYLOADS = list(self.ERROR_PAYLOADS) + extra
+            stats = self.payload_manager.get_stats()
+            count = stats['total'].get('sql_injection', 0)
+            logger.info(f'SQL Injection: {count} payloads available ({len(extra)} new from PayloadManager)')
+        except Exception as e:
+            self.payload_manager = None
+            logger.debug(f'PayloadManager not available: {e}')
+
+        # AI-generated smart payloads
+        try:
+            smart = self._get_smart_payloads('sql_injection')
+            if smart:
+                existing_set = set(self.ERROR_PAYLOADS)
+                new_smart = [p for p in smart if p not in existing_set]
+                self.ERROR_PAYLOADS = list(self.ERROR_PAYLOADS) + new_smart
+        except Exception:
+            pass
+
     ERROR_PAYLOADS = [
         "'",
         "''",
@@ -512,7 +543,7 @@ class SQLInjectionScanner(BaseScanner):
                 'database errors that reveal query structure.'
             )
 
-        return {
+        finding = {
             'vuln_type': 'sql_injection',
             'name': f'SQL Injection ({technique})',
             'description': description,
@@ -529,6 +560,9 @@ class SQLInjectionScanner(BaseScanner):
             'response_data': result.get('evidence', 'SQL injection confirmed'),
             'remediation': 'Use parameterized queries / prepared statements. Never concatenate user input into SQL. Use an ORM. Apply least-privilege DB accounts. Implement WAF rules.'
         }
+        if 'difficulty' in result:
+            finding['difficulty'] = result['difficulty']
+        return finding
 
     def scan(self, target_url, injectable_points):
         self.findings = []

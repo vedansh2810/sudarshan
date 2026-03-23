@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, session, request
+from flask import Blueprint, jsonify, session
 from app.models.scan import Scan
 from app.models.database import db, ScanModel, VulnerabilityModel
 from app.scanner.scan_manager import ScanManager
@@ -49,3 +49,12 @@ def global_stats():
 def health():
     """Health check endpoint for load balancer / container probes."""
     return jsonify({'status': 'healthy', 'service': 'sudarshan'})
+
+
+@api_bp.route('/api/metrics')
+@csrf.exempt
+def metrics():
+    """Prometheus metrics endpoint."""
+    from app.monitoring.metrics import metrics_endpoint
+    body, status, headers = metrics_endpoint()
+    return body, status, headers

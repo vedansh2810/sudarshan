@@ -1,0 +1,261 @@
+<html class="dark"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#06e0f9",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#0d0d24",
+                        "accent-purple": "#a855f7",
+                        "status-critical": "#ef4444",
+                        "status-high": "#f97316",
+                        "status-medium": "#f59e0b",
+                        "status-low": "#3b82f6"
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glow-cyan {
+            box-shadow: 0 0 20px rgba(6, 224, 249, 0.2);
+        }
+        .terminal-bg {
+            background: #050510;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen flex">
+<!-- SIDEBAR -->
+<aside class="w-64 border-r border-primary/10 flex flex-col h-screen sticky top-0 bg-background-dark/50 backdrop-blur-md">
+<div class="p-6 flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center">
+<span class="material-symbols-outlined text-background-dark font-bold">shield_with_heart</span>
+</div>
+<div>
+<h1 class="text-white text-lg font-bold leading-none tracking-tight">SUDARSHAN</h1>
+<p class="text-primary/60 text-[10px] uppercase tracking-widest font-bold mt-1">AI Web Scanner</p>
+</div>
+</div>
+<nav class="flex-1 px-4 py-4 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-primary transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform">dashboard</span>
+<span class="text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary border border-primary/20" href="#">
+<span class="material-symbols-outlined">radar</span>
+<span class="text-sm font-medium">Scan Progress</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-primary transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform">history</span>
+<span class="text-sm font-medium">Scan History</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-primary transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform">settings</span>
+<span class="text-sm font-medium">Settings</span>
+</a>
+</nav>
+<div class="p-4 mt-auto">
+<div class="glass p-4 rounded-xl border border-primary/10">
+<p class="text-[10px] text-slate-500 uppercase font-bold mb-2 tracking-wider">Engine Status</p>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-xs text-slate-300">v4.2.0 Active</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- MAIN CONTENT -->
+<main class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+<!-- TOP BAR -->
+<header class="h-16 border-b border-primary/10 flex items-center justify-between px-8 bg-background-dark/30 backdrop-blur-sm sticky top-0 z-50">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">analytics</span>
+<h2 class="text-sm font-semibold text-slate-100 uppercase tracking-widest">Real-time Monitor</h2>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-3 bg-slate-800/50 p-1.5 pr-4 rounded-full border border-slate-700/50">
+<div class="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+<span class="material-symbols-outlined text-primary text-sm">person</span>
+</div>
+<span class="text-xs font-medium text-slate-300">Admin_Root</span>
+</div>
+</div>
+</header>
+<div class="p-8 space-y-8 max-w-7xl mx-auto w-full">
+<!-- TARGET HEADER -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div class="space-y-1">
+<p class="text-slate-500 text-xs font-bold uppercase tracking-[0.2em]">Scanning Target</p>
+<div class="flex items-center gap-3">
+<h3 class="text-2xl font-mono font-bold text-primary">https://example.com</h3>
+<span class="material-symbols-outlined text-slate-500 cursor-pointer hover:text-primary text-lg">content_copy</span>
+</div>
+</div>
+<div class="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/30">
+<div class="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_10px_#06e0f9]"></div>
+<span class="text-xs font-bold text-primary tracking-widest">RUNNING</span>
+</div>
+</div>
+<!-- PROGRESS SECTION -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div class="lg:col-span-1 glass rounded-2xl p-8 flex flex-col items-center justify-center relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent"></div>
+<!-- Circular Progress -->
+<div class="relative w-48 h-48 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-slate-800" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" stroke-width="8"></circle>
+<circle class="text-primary drop-shadow-[0_0_8px_rgba(6,224,249,0.5)]" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" stroke-dasharray="552.92" stroke-dashoffset="182.46" stroke-width="8"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="text-5xl font-bold text-white font-mono">67%</span>
+<span class="text-[10px] text-primary font-bold uppercase tracking-widest mt-1">Complete</span>
+</div>
+</div>
+<div class="mt-6 flex flex-wrap gap-2 justify-center">
+<button class="px-4 py-2 border border-amber-500/50 text-amber-500 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-amber-500/10 transition-colors">
+<span class="material-symbols-outlined text-sm">pause</span> PAUSE
+                        </button>
+<button class="px-4 py-2 bg-slate-800 text-slate-500 rounded-lg text-xs font-bold flex items-center gap-2 cursor-not-allowed" disabled="">
+<span class="material-symbols-outlined text-sm">play_arrow</span> RESUME
+                        </button>
+<button class="px-4 py-2 border border-red-500 text-red-500 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-red-500/10 transition-colors">
+<span class="material-symbols-outlined text-sm">stop</span> STOP
+                        </button>
+</div>
+</div>
+<div class="lg:col-span-2 space-y-4">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div class="glass p-4 rounded-xl border-l-2 border-primary">
+<p class="text-slate-500 text-[10px] font-bold uppercase mb-1">Phase</p>
+<p class="text-lg font-bold text-slate-100 italic">Scanning</p>
+</div>
+<div class="glass p-4 rounded-xl">
+<p class="text-slate-500 text-[10px] font-bold uppercase mb-1">URLs Found</p>
+<p class="text-xl font-mono font-bold text-slate-100">142</p>
+</div>
+<div class="glass p-4 rounded-xl">
+<p class="text-slate-500 text-[10px] font-bold uppercase mb-1">URLs Tested</p>
+<p class="text-xl font-mono font-bold text-slate-100">95</p>
+</div>
+<div class="glass p-4 rounded-xl border-l-2 border-status-high">
+<p class="text-slate-500 text-[10px] font-bold uppercase mb-1">Findings</p>
+<p class="text-xl font-mono font-bold text-status-high">08</p>
+</div>
+</div>
+<!-- LIVE FINDINGS FEED -->
+<div class="flex flex-col gap-3">
+<h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+<span class="material-symbols-outlined text-sm text-status-critical">notifications_active</span> Live Discoveries
+                        </h4>
+<!-- Critical Finding -->
+<div class="glass p-4 rounded-xl flex items-center justify-between border border-status-critical/20 hover:border-status-critical/40 transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-status-critical/10 flex items-center justify-center text-status-critical border border-status-critical/20">
+<span class="material-symbols-outlined">gavel</span>
+</div>
+<div>
+<p class="text-sm font-bold text-slate-100">SQL Injection Vulnerability</p>
+<p class="text-xs font-mono text-slate-500">Path: /api/v1/auth/login [POST]</p>
+</div>
+</div>
+<span class="px-3 py-1 bg-status-critical text-[10px] font-black rounded text-white tracking-tighter">CRITICAL</span>
+</div>
+<!-- High Finding -->
+<div class="glass p-4 rounded-xl flex items-center justify-between border border-status-high/20 hover:border-status-high/40 transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-status-high/10 flex items-center justify-center text-status-high border border-status-high/20">
+<span class="material-symbols-outlined">rebase_edit</span>
+</div>
+<div>
+<p class="text-sm font-bold text-slate-100">Open Redirect Detected</p>
+<p class="text-xs font-mono text-slate-500">Path: /redirect?url=external_site</p>
+</div>
+</div>
+<span class="px-3 py-1 bg-status-high text-[10px] font-black rounded text-white tracking-tighter">HIGH</span>
+</div>
+<!-- Medium Finding -->
+<div class="glass p-4 rounded-xl flex items-center justify-between border border-status-medium/20 hover:border-status-medium/40 transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-status-medium/10 flex items-center justify-center text-status-medium border border-status-medium/20">
+<span class="material-symbols-outlined">security_update_warning</span>
+</div>
+<div>
+<p class="text-sm font-bold text-slate-100">Missing CSP Header</p>
+<p class="text-xs font-mono text-slate-500">Global configuration policy</p>
+</div>
+</div>
+<span class="px-3 py-1 bg-status-medium text-[10px] font-black rounded text-white tracking-tighter">MEDIUM</span>
+</div>
+</div>
+</div>
+</div>
+<!-- LOG VIEWER -->
+<div class="space-y-3">
+<div class="flex items-center justify-between">
+<h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">terminal</span> Scanner Logs
+                    </h4>
+<div class="flex items-center gap-4 text-[10px] font-bold text-slate-500">
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> INFO</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span> SUCCESS</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> WARNING</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> ERROR</span>
+</div>
+</div>
+<div class="terminal-bg rounded-xl p-6 font-mono text-xs leading-relaxed border border-white/5 h-64 overflow-y-auto shadow-inner">
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:22:01]</span>
+<span class="text-slate-400">INFO: Starting crawler engine for base URL...</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:22:15]</span>
+<span class="text-primary">SUCCESS: Sitemap successfully parsed (24 URLs found).</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:23:42]</span>
+<span class="text-slate-400">INFO: Initiating fuzzing module on /api/v1/auth/login</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:24:10]</span>
+<span class="text-amber-500">WARNING: Potential blind timing leak detected in search query.</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:24:33]</span>
+<span class="text-red-500">ERROR: Target rate limit reached on endpoint /admin/v2/stats. Throttling...</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:24:55]</span>
+<span class="text-slate-400">INFO: Scanning /assets/scripts/vendor.js for secrets...</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:25:01]</span>
+<span class="text-primary">SUCCESS: Discovery of SQL Injection vector confirmed. Adding to findings.</span>
+</div>
+<div class="flex gap-4 mb-2">
+<span class="text-slate-600">[14:25:12]</span>
+<span class="text-slate-400 animate-pulse text-primary">&gt; Engine actively probing 42 concurrent streams...</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

@@ -181,7 +181,7 @@ class TestSQLiScanner:
         scanner = SQLInjectionScanner()
         
         # Should detect MySQL error
-        found, evidence = scanner._check_error_based(
+        found, evidence, db_type = scanner._check_error_based(
             "Error: You have an error in your SQL syntax near 'x'"
         )
         assert found is True
@@ -191,7 +191,7 @@ class TestSQLiScanner:
         from app.scanner.vulnerabilities.sql_injection import SQLInjectionScanner
         scanner = SQLInjectionScanner()
         
-        found, evidence = scanner._check_error_based(
+        found, evidence, db_type = scanner._check_error_based(
             "<html><body>Welcome to our website</body></html>"
         )
         assert found is False
@@ -229,7 +229,7 @@ class TestSQLiScanner:
         ]
         
         for msg in error_messages:
-            found, _ = scanner._check_error_based(msg)
+            found, _, _ = scanner._check_error_based(msg)
             assert found is True, f"Should detect: {msg}"
 
 

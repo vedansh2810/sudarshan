@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="flex h-screen overflow-hidden font-body">
+  <!-- Sidebar -->
+  <aside class="w-[250px] bg-bg-secondary border-r border-slate-800 flex flex-col shrink-0">
+    <a href="/dashboard" class="p-6 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center shadow-lg shadow-primary/20">
+        <span class="material-symbols-outlined text-[#060611] font-bold" style="font-variation-settings:'FILL' 1">shield_with_heart</span>
+      </div>
+      <div>
+        <h1 class="font-extrabold text-xl tracking-tight leading-none text-white font-display">SUDARSHAN</h1>
+        <p class="text-[10px] font-mono text-primary/70 mt-1 uppercase tracking-tighter">AI Vuln Scanner</p>
+      </div>
+    </a>
+
+    <nav class="flex-1 px-4 mt-6 space-y-2">
+      {% set current = request.path %}
+      {% for item in [
+        ('/dashboard', 'dashboard', 'Dashboard'),
+        ('/scan/new', 'radar', 'New Scan'),
+        ('/history', 'history', 'Scan History')
+      ] %}
+      <a href="{{ item[0] }}" class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all
+        {% if current.startswith(item[0]) %}bg-primary/10 text-primary border border-primary/20{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+        <span class="material-symbols-outlined text-[22px]">{{ item[1] }}</span>
+        <span class="text-sm font-semibold">{{ item[2] }}</span>
+      </a>
+      {% endfor %}
+
+      <a href="/logout" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-all mt-4">
+        <span class="material-symbols-outlined text-[22px]">logout</span>
+        <span class="text-sm font-semibold">Logout</span>
+      </a>
+    </nav>
+
+    <div class="p-6 border-t border-slate-800 space-y-2">
+      <div class="flex items-center justify-between text-[11px] font-mono text-slate-500">
+        <span>VERSION</span>
+        <span class="text-primary/60">v2.0.0</span>
+      </div>
+      <p class="text-[10px] text-slate-600 font-medium leading-tight italic">For authorized use only</p>
+    </div>
+  </aside>
+
+  <!-- Main Area -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- Top Bar -->
+    <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-bg-card/50 backdrop-blur-md shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-sm font-medium italic font-mono">// root /</span>
+        <h2 class="text-white font-bold tracking-tight">{% block page_title %}Dashboard{% endblock %}</h2>
+      </div>
+      <div class="flex items-center gap-3 pl-4 border-l border-slate-800">
+        <div class="text-right">
+          <p class="text-sm font-bold text-white leading-none">{{ session.get('username', 'User') }}</p>
+          <p class="text-[11px] text-primary font-mono mt-1">Security Analyst</p>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center text-[#060611] font-bold text-lg border-2 border-primary/30">
+          {{ session.get('username', 'U')[0]|upper }}
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto p-8">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+        <div class="flash-msg {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}

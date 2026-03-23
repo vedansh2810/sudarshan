@@ -1,8 +1,8 @@
 """Celery tasks for background scan execution."""
 import time
 import json
-import copy
 import logging
+import requests as requests_lib
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -16,10 +16,18 @@ from app.scanner.vulnerabilities.security_headers import SecurityHeadersScanner
 from app.scanner.vulnerabilities.directory_traversal import DirectoryTraversalScanner
 from app.scanner.vulnerabilities.command_injection import CommandInjectionScanner
 from app.scanner.vulnerabilities.idor import IDORScanner, DirectoryListingScanner
+from app.scanner.vulnerabilities.xxe import XXEScanner
+from app.scanner.vulnerabilities.ssrf import SSRFScanner
+from app.scanner.vulnerabilities.open_redirect import OpenRedirectScanner
+from app.scanner.vulnerabilities.cors import CORSScanner
+from app.scanner.vulnerabilities.clickjacking import ClickjackingScanner
+from app.scanner.vulnerabilities.ssti import SSTIScanner
+from app.scanner.vulnerabilities.jwt_attacks import JWTAttackScanner
+from app.scanner.vulnerabilities.broken_auth import BrokenAuthScanner
 from app.scanner.dvwa_auth import DVWAAuth
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
-from app.models.database import execute_db
+from app.monitoring.metrics import track_scan_started, track_scan_completed, track_vulnerability
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +108,7 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
     redis_client = _get_redis()
     speed_config = _get_speed_config(scan_speed)
     findings = []
+    seen_vulns = set()  # (vuln_type, affected_url, parameter) dedup
     start_time = time.time()
 
     def emit(event_type, data, log_level='info'):
@@ -126,6 +135,7 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
             redis_client.set(f'scan:{scan_id}:task_id', self.request.id, ex=86400)
 
         emit('log', f'[+] Starting scan: {target_url}', 'info')
+        track_scan_started()
         emit('log', f'[+] Mode: {scan_mode} | Speed: {scan_speed}', 'info')
 
         # Phase 1: Crawling
@@ -141,7 +151,7 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
             wait_if_paused()
             total_urls = count
             Scan.update_progress(scan_id, tested_urls, len(findings))
-            execute_db('UPDATE scans SET total_urls = :p0 WHERE id = :p1', (count, scan_id))
+            Scan.update_total_urls(scan_id, count)
             emit('log', f'[+] Crawling: {url[:70]}', 'info')
             emit('progress', {
                 'phase': 'crawling',
@@ -195,6 +205,14 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
                 'command_injection': (CommandInjectionScanner, 'Command Injection'),
                 'idor': (IDORScanner, 'IDOR'),
                 'directory_listing': (DirectoryListingScanner, 'Directory Listing'),
+                'xxe': (XXEScanner, 'XXE Injection'),
+                'ssrf': (SSRFScanner, 'SSRF'),
+                'open_redirect': (OpenRedirectScanner, 'Open Redirect'),
+                'cors': (CORSScanner, 'CORS Misconfiguration'),
+                'clickjacking': (ClickjackingScanner, 'Clickjacking'),
+                'ssti': (SSTIScanner, 'Server-Side Template Injection'),
+                'jwt_attacks': (JWTAttackScanner, 'JWT Vulnerabilities'),
+                'broken_auth': (BrokenAuthScanner, 'Broken Authentication'),
             }
 
             checks = selected_checks or Config.VULNERABILITY_CHECKS
@@ -208,13 +226,21 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
                 if is_stopped():
                     return display_name, [], None
                 try:
-                    scanner_session = copy.deepcopy(crawler.session) if crawler.session else None
+                    # Create a fresh session and copy cookies/headers
+                    # instead of deepcopy which breaks transport adapters
+                    if crawler.session:
+                        scanner_session = requests_lib.Session()
+                        scanner_session.cookies.update(crawler.session.cookies)
+                        scanner_session.headers.update(crawler.session.headers)
+                    else:
+                        scanner_session = None
                     scanner = ScannerClass(
                         session=scanner_session,
                         timeout=speed_config['timeout'],
                         delay=speed_config['delay']
                     )
-                    if check_name == 'security_headers':
+                    # Header-only scanners don't need injectable points
+                    if check_name in ('security_headers', 'cors', 'clickjacking'):
                         results = scanner.scan(target_url, [])
                     else:
                         results = scanner.scan(target_url, injectable_points)
@@ -243,6 +269,12 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
                         continue
 
                     for finding in scan_findings:
+                        # Deduplicate: same vuln_type + URL + param = skip
+                        dedup_key = (finding['vuln_type'], finding['affected_url'], finding['parameter'])
+                        if dedup_key in seen_vulns:
+                            continue
+                        seen_vulns.add(dedup_key)
+
                         findings.append(finding)
                         Vulnerability.create(
                             scan_id=scan_id,
@@ -260,6 +292,7 @@ def run_scan_task(self, scan_id, target_url, scan_mode, scan_speed,
                             response_data=finding['response_data'],
                             remediation=finding['remediation']
                         )
+                        track_vulnerability(finding['severity'], finding.get('vuln_type', 'unknown'))
                         sev = finding['severity'].upper()
                         emit('log',
                              f'[X] FOUND: {finding["name"]} ({sev}) at {finding["affected_url"][:50]}',
@@ -344,6 +377,7 @@ def _finalize(scan_id, findings, discovered_urls, start_time, stopped=False, red
         Scan.update_status(scan_id, 'stopped')
 
     status = 'stopped' if stopped else 'completed'
+    track_scan_completed(duration, status)
     _emit_redis(redis_client, scan_id, 'log',
                 f'[+] Scan {status}! Score: {score} | Vulnerabilities: {len(findings)}', 'success')
     _emit_redis(redis_client, scan_id, 'complete', {

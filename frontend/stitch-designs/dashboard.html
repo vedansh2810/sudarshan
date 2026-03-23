@@ -1,0 +1,334 @@
+<html class="dark"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#06e0f9",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#0d0d24",
+                        "sidebar-dark": "#0a0a1e",
+                        "accent-purple": "#a855f7",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .status-pill {
+            @apply px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased">
+<div class="flex h-screen overflow-hidden">
+<!-- LEFT SIDEBAR -->
+<aside class="w-[250px] bg-sidebar-dark border-r border-slate-800 flex flex-col shrink-0">
+<div class="p-6 flex items-center gap-3">
+<div class="size-10 rounded-lg bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-background-dark font-bold">shield_with_heart</span>
+</div>
+<div>
+<h1 class="font-extrabold text-xl tracking-tight leading-none text-white">SUDARSHAN</h1>
+<p class="text-[10px] font-mono text-primary/70 mt-1 uppercase tracking-tighter">AI Vuln Scanner</p>
+</div>
+</div>
+<nav class="flex-1 px-4 mt-6 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary border border-primary/20 group" href="#">
+<span class="material-symbols-outlined text-[22px]">dashboard</span>
+<span class="text-sm font-semibold">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-all group" href="#">
+<span class="material-symbols-outlined text-[22px]">radar</span>
+<span class="text-sm font-semibold">New Scan</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-all group" href="#">
+<span class="material-symbols-outlined text-[22px]">history</span>
+<span class="text-sm font-semibold">Scan History</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-all group" href="#">
+<span class="material-symbols-outlined text-[22px]">account_circle</span>
+<span class="text-sm font-semibold">Account</span>
+</a>
+</nav>
+<div class="p-6 border-t border-slate-800 space-y-2">
+<div class="flex items-center justify-between text-[11px] font-mono text-slate-500">
+<span>VERSION</span>
+<span class="text-primary/60">v2.0.0</span>
+</div>
+<p class="text-[10px] text-slate-600 font-medium leading-tight italic">For authorized use only</p>
+</div>
+</aside>
+<!-- MAIN AREA -->
+<main class="flex-1 flex flex-col overflow-hidden">
+<!-- TOP BAR -->
+<header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-background-dark/50 backdrop-blur-md">
+<div class="flex items-center gap-2">
+<span class="text-slate-500 text-sm font-medium italic">// root / scans /</span>
+<h2 class="text-white font-bold tracking-tight">Dashboard</h2>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-3 pl-4 border-l border-slate-800">
+<div class="text-right">
+<p class="text-sm font-bold text-white leading-none">Alex Rivera</p>
+<p class="text-[11px] text-primary font-mono mt-1">Security Analyst</p>
+</div>
+<div class="size-10 rounded-full border-2 border-primary/30 p-0.5 overflow-hidden">
+<img alt="User avatar" class="w-full h-full rounded-full object-cover" data-alt="Portrait of a modern security analyst" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGV9jmRem-VieUV7jCI0EcxTCt8q0Bfq5vWRUSMTnsPGEpLWJvCEKghPoV8PhMSgR2fEeApFew3y6cvmve8uP99UmOqFMxMdoC79unU7p5cnDEejNOQewW9lqXoNXv263yfKenirY0Jzs0z16X8Ee3jyPNdjdlpF5UCMGgi6ZFTvC7pp87-x6mMyTfmDUJby0xKe5Zlj231MPrNeCfGsoLeDK_ZcsQRYzSJwtvj3GgC1NYEL1431y9KBevx0Yb6nIiPiaa0JQdyaY"/>
+</div>
+</div>
+</div>
+</header>
+<!-- CONTENT -->
+<div class="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+<!-- PAGE HEADER -->
+<div class="flex items-end justify-between">
+<div>
+<h3 class="text-4xl font-black text-white tracking-tight">Threat Dashboard <span class="text-primary inline-block w-2 h-2 rounded-full mb-1"></span></h3>
+<p class="text-slate-500 font-mono text-sm mt-2 uppercase tracking-widest">// REAL-TIME SECURITY OVERVIEW</p>
+</div>
+<button class="bg-gradient-to-r from-primary to-cyan-600 text-background-dark px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined">add_moderator</span>
+                        NEW SCAN
+                    </button>
+</div>
+<!-- STAT CARDS -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Card 1 -->
+<div class="glass-card p-6 rounded-xl border-t-2 border-t-primary hover:-translate-y-1 transition-transform duration-300 group">
+<div class="flex justify-between items-start mb-4">
+<span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">analytics</span>
+<span class="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">+5%</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Scans</p>
+<p class="text-4xl font-mono font-bold text-white mt-1">47</p>
+</div>
+<!-- Card 2 -->
+<div class="glass-card p-6 rounded-xl border-t-2 border-t-red-500 hover:-translate-y-1 transition-transform duration-300 group">
+<div class="flex justify-between items-start mb-4">
+<span class="material-symbols-outlined text-red-500 group-hover:scale-110 transition-transform">dangerous</span>
+<span class="text-[10px] font-mono text-red-500 bg-red-500/10 px-2 py-0.5 rounded">-2%</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-wider">Critical</p>
+<p class="text-4xl font-mono font-bold text-white mt-1">12</p>
+</div>
+<!-- Card 3 -->
+<div class="glass-card p-6 rounded-xl border-t-2 border-t-amber-500 hover:-translate-y-1 transition-transform duration-300 group">
+<div class="flex justify-between items-start mb-4">
+<span class="material-symbols-outlined text-amber-500 group-hover:scale-110 transition-transform">warning</span>
+<span class="text-[10px] font-mono text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">+12%</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-wider">High/Medium</p>
+<p class="text-4xl font-mono font-bold text-white mt-1">38</p>
+</div>
+<!-- Card 4 -->
+<div class="glass-card p-6 rounded-xl border-t-2 border-t-emerald-500 hover:-translate-y-1 transition-transform duration-300 group">
+<div class="flex justify-between items-start mb-4">
+<span class="material-symbols-outlined text-emerald-500 group-hover:scale-110 transition-transform">check_circle</span>
+<span class="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">0%</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-wider">Low</p>
+<p class="text-4xl font-mono font-bold text-white mt-1">15</p>
+</div>
+</div>
+<!-- CHARTS SECTION -->
+<div class="grid grid-cols-1 lg:grid-cols-10 gap-8">
+<!-- Line Chart Area -->
+<div class="lg:col-span-6 glass-card p-6 rounded-xl">
+<div class="flex items-center justify-between mb-8">
+<h4 class="text-lg font-bold text-white">Vulnerability Trend</h4>
+<select class="bg-background-dark border-slate-700 text-slate-400 text-xs rounded-lg px-3 py-1 font-mono outline-none">
+<option>LAST 30 DAYS</option>
+<option>LAST 7 DAYS</option>
+</select>
+</div>
+<div class="h-64 relative">
+<!-- SVG Chart Simulation -->
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 400 150">
+<defs>
+<lineargradient id="gradRed" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:rgb(239, 68, 68);stop-opacity:0.2"></stop>
+<stop offset="100%" style="stop-color:rgb(239, 68, 68);stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+<!-- Grid -->
+<line stroke="rgba(255,255,255,0.05)" stroke-width="1" x1="0" x2="400" y1="30" y2="30"></line>
+<line stroke="rgba(255,255,255,0.05)" stroke-width="1" x1="0" x2="400" y1="60" y2="60"></line>
+<line stroke="rgba(255,255,255,0.05)" stroke-width="1" x1="0" x2="400" y1="90" y2="90"></line>
+<line stroke="rgba(255,255,255,0.05)" stroke-width="1" x1="0" x2="400" y1="120" y2="120"></line>
+<!-- Lines -->
+<path d="M0,120 Q50,40 100,80 T200,50 T300,100 T400,20" fill="none" stroke="#ef4444" stroke-linecap="round" stroke-width="3"></path>
+<path d="M0,130 Q50,70 100,100 T200,80 T300,120 T400,60" fill="none" stroke="#f59e0b" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="flex justify-between mt-4 text-[10px] font-mono text-slate-500">
+<span>01 OCT</span>
+<span>07 OCT</span>
+<span>14 OCT</span>
+<span>21 OCT</span>
+<span>28 OCT</span>
+</div>
+</div>
+</div>
+<!-- Donut Chart Area -->
+<div class="lg:col-span-4 glass-card p-6 rounded-xl">
+<h4 class="text-lg font-bold text-white mb-8">Severity Breakdown</h4>
+<div class="flex flex-col items-center">
+<div class="relative w-48 h-48 mb-8 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90">
+<circle cx="96" cy="96" fill="transparent" r="70" stroke="rgba(255,255,255,0.05)" stroke-width="16"></circle>
+<circle cx="96" cy="96" fill="transparent" r="70" stroke="#ef4444" stroke-dasharray="440" stroke-dashoffset="360" stroke-linecap="round" stroke-width="16"></circle>
+<circle cx="96" cy="96" fill="transparent" r="70" stroke="#f59e0b" stroke-dasharray="440" stroke-dashoffset="300" stroke-linecap="round" stroke-width="16" style="stroke-dashoffset: 140; stroke-dasharray: 440 440; opacity: 0.8"></circle>
+</svg>
+<div class="absolute text-center">
+<p class="text-2xl font-mono font-bold text-white">65%</p>
+<p class="text-[10px] text-slate-500 uppercase">Risk Level</p>
+</div>
+</div>
+<div class="w-full space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="size-2 rounded-full bg-red-500"></div>
+<span class="text-xs text-slate-400 font-medium">Critical</span>
+</div>
+<span class="text-xs font-mono text-white">28%</span>
+</div>
+<div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+<div class="bg-red-500 h-full" style="width: 28%"></div>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="size-2 rounded-full bg-amber-500"></div>
+<span class="text-xs text-slate-400 font-medium">Medium</span>
+</div>
+<span class="text-xs font-mono text-white">42%</span>
+</div>
+<div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+<div class="bg-amber-500 h-full" style="width: 42%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- RECENT SCANS TABLE -->
+<div class="glass-card rounded-xl overflow-hidden border border-slate-800">
+<div class="p-6 border-b border-slate-800 flex justify-between items-center bg-white/5">
+<h4 class="text-lg font-bold text-white uppercase tracking-tight">Active Scan Repositories</h4>
+<div class="flex items-center gap-3">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-lg">search</span>
+<input class="bg-background-dark border-slate-700 rounded-lg pl-10 pr-4 py-1.5 text-xs text-slate-300 focus:ring-primary focus:border-primary" placeholder="Search target..." type="text"/>
+</div>
+<button class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-lg">filter_list</span>
+</button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead class="bg-slate-900/50 text-[11px] font-mono text-slate-500 uppercase tracking-widest border-b border-slate-800">
+<tr>
+<th class="px-6 py-4 font-normal">Target Domain</th>
+<th class="px-6 py-4 font-normal">Status</th>
+<th class="px-6 py-4 font-normal">Health Score</th>
+<th class="px-6 py-4 font-normal text-center">Findings</th>
+<th class="px-6 py-4 font-normal">Last Audit</th>
+<th class="px-6 py-4 font-normal text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-800/50">
+<tr class="hover:bg-white/[0.02] transition-colors group">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-xl">language</span>
+</div>
+<div>
+<p class="text-sm font-bold text-white leading-tight">api.internal.production.io</p>
+<p class="text-[10px] text-slate-500 font-mono mt-0.5">34.120.45.102</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="status-pill bg-primary/20 text-primary border border-primary/30 flex items-center gap-1 w-fit">
+<span class="size-1 bg-primary rounded-full animate-pulse"></span>
+                                            Running
+                                        </span>
+</td>
+<td class="px-6 py-5">
+<div class="size-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500 font-mono font-black text-lg">A</div>
+</td>
+<td class="px-6 py-5 text-center">
+<p class="text-sm font-mono text-slate-300">03</p>
+</td>
+<td class="px-6 py-5">
+<p class="text-xs text-slate-400">Oct 29, 2023</p>
+<p class="text-[10px] text-slate-500 font-mono">14:23 UTC</p>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex items-center justify-end gap-2">
+<button class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-primary"><span class="material-symbols-outlined text-lg">visibility</span></button>
+<button class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-white"><span class="material-symbols-outlined text-lg">download</span></button>
+<button class="p-1.5 hover:bg-red-500/10 rounded transition-colors text-slate-500 hover:text-red-500"><span class="material-symbols-outlined text-lg">delete</span></button>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors group">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded bg-accent-purple/10 flex items-center justify-center text-accent-purple">
+<span class="material-symbols-outlined text-xl">database</span>
+</div>
+<div>
+<p class="text-sm font-bold text-white leading-tight">customer-portal-v3.dev</p>
+<p class="text-[10px] text-slate-500 font-mono mt-0.5">172.16.0.45</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="status-pill bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 flex items-center gap-1 w-fit">
+                                            Complete
+                                        </span>
+</td>
+<td class="px-6 py-5">
+<div class="size-8 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 font-mono font-black text-lg">F</div>
+</td>
+<td class="px-6 py-5 text-center">
+<p class="text-sm font-mono text-slate-300">12</p>
+</td>
+<td class="px-6 py-5">
+<p class="text-xs text-slate-400">Oct 28, 2023</p>
+<p class="text-[10px] text-slate-500 font-mono">09:12 UTC</p>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex items-center justify-end gap-2">
+<button class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-primary"><span class="material-symbols-outlined text-lg">visibility</span></button>
+<button class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-white"><span class="material-symbols-outlined text-lg">download</span></button>
+<button class="p-1.5 hover:bg-red-500/10 rounded transition-colors text-slate-500 hover:text-red-500"><span class="material-symbols-outlined text-lg">delete</span></button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

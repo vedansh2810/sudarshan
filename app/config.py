@@ -3,23 +3,44 @@ import os
 # Project root is two levels up from this file (app/config.py -> app/ -> project root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
+
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-only-insecure-key-change-me')
-    DATABASE_PATH = os.path.join(PROJECT_ROOT, 'data', 'database.db')
+
+    # ── Database (PostgreSQL via Supabase) ────────────────────────────────
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
         'sqlite:///' + os.path.join(PROJECT_ROOT, 'data', 'database.db')
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 10,
+        'max_overflow': 20,
+        'pool_timeout': 30,
+        'pool_recycle': 1800,    # Recycle connections every 30 min
+        'pool_pre_ping': True,   # Verify connections before use
+    }
+
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     WTF_CSRF_TIME_LIMIT = 3600  # CSRF tokens valid for 1 hour
 
     # Redis + Celery (optional — falls back to in-process threading if unavailable)
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-    # Celery 5.x uses lowercase config keys
-    broker_url = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', 'redis://localhost:6379/0'))
-    result_backend = os.environ.get('CELERY_RESULT_BACKEND', os.environ.get('REDIS_URL', 'redis://localhost:6379/0'))
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', 'redis://localhost:6379/0'))
+    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', os.environ.get('REDIS_URL', 'redis://localhost:6379/0'))
+
+    # Supabase Auth
+    SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+    SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY', '')
+    SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
+
+    # Rate limiter storage (default: in-memory; overridden to Redis in production)
+    RATELIMIT_STORAGE_URI = 'memory://'
+
+    # AI / LLM Configuration (Groq — Llama 3.3 70B)
+    GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+    GROQ_MODEL = os.environ.get('GROQ_MODEL', 'llama-3.3-70b-versatile')
 
     SCAN_SPEEDS = {
         'safe': {
@@ -65,13 +86,20 @@ class Config:
         'directory_traversal',
         'command_injection',
         'idor',
-        'directory_listing'
+        'directory_listing',
+        'xxe',
+        'ssrf',
+        'open_redirect',
+        'cors',
+        'clickjacking',
+        'ssti',
+        'jwt_attacks',
+        'broken_auth',
     ]
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    # Dev convenience: fallback key is fine for local development
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-only-insecure-key-change-me')
+    RATELIMIT_STORAGE_URI = 'memory://'
 
 class ProductionConfig(Config):
     DEBUG = False
@@ -81,6 +109,8 @@ class ProductionConfig(Config):
         'DATABASE_URL',
         Config.SQLALCHEMY_DATABASE_URI
     )
+    # Use Redis for rate limiting in production (shared across workers)
+    RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
     @staticmethod
     def init_app(app):

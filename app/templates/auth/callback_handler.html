@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Signing in…{% endblock %}
+
+{% block body %}
+<div class="min-h-screen flex items-center justify-center bg-[#060611] font-display">
+  <div class="text-center animate-fade-in-up">
+    <div class="mb-8 relative inline-block">
+      <div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
+      <div class="relative w-16 h-16 bg-[#060611] border border-primary/50 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(0,229,255,0.3)] animate-pulse-glow mx-auto">
+        <span class="material-symbols-outlined text-primary text-4xl" style="font-variation-settings:'FILL' 1">security</span>
+      </div>
+    </div>
+    <h2 class="text-2xl font-bold text-white mb-2">Authenticating…</h2>
+    <p id="status-msg" class="text-slate-400 text-sm">Verifying your identity with Google</p>
+    <div class="mt-6">
+      <div class="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto"></div>
+    </div>
+    <p id="error-msg" class="text-red-400 text-sm mt-4 hidden"></p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(async () => {
+  const statusEl = document.getElementById('status-msg');
+  const errorEl  = document.getElementById('error-msg');
+
+  function showError(msg) {
+    statusEl.textContent = 'Authentication failed';
+    errorEl.textContent = msg;
+    errorEl.classList.remove('hidden');
+  }
+
+  try {
+    const SUPABASE_URL  = '{{ supabase_url }}';
+    const SUPABASE_ANON = '{{ supabase_anon_key }}';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    /* Supabase puts tokens in the hash fragment after OAuth redirect.
+       The JS SDK picks them up automatically when we call getSession(). */
+    const { data, error } = await sb.auth.getSession();
+
+    if (error) { showError(error.message); return; }
+    if (!data?.session?.access_token) {
+      showError('No session returned from Google. Please try again.');
+      setTimeout(() => { window.location.href = '/login'; }, 2000);
+      return;
+    }
+
+    statusEl.textContent = 'Creating your session…';
+
+    /* POST the verified access_token to the Flask backend */
+    const resp = await fetch('/auth/callback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: data.session.access_token })
+    });
+
+    const result = await resp.json();
+
+    if (resp.ok && result.success) {
+      statusEl.textContent = 'Welcome! Redirecting…';
+      window.location.href = result.redirect || '/dashboard';
+    } else {
+      showError(result.error || 'Server rejected the token.');
+    }
+  } catch (e) {
+    console.error(e);
+    showError('Unexpected error: ' + e.message);
+  }
+})();
+</script>
+{% endblock %}

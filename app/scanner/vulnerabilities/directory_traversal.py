@@ -1,6 +1,10 @@
 import re
+import logging
 from urllib.parse import urlparse, parse_qs
 from app.scanner.vulnerabilities.base import BaseScanner
+from app.scanner.payload_manager import get_payload_manager
+
+logger = logging.getLogger(__name__)
 
 
 class DirectoryTraversalScanner(BaseScanner):
@@ -8,6 +12,21 @@ class DirectoryTraversalScanner(BaseScanner):
     PHP wrappers, and form input testing."""
 
     # ── Payloads ─────────────────────────────────────────────────────
+
+    def __init__(self, session=None, timeout=8, delay=0.5):
+        super().__init__(session, timeout, delay)
+        try:
+            self.payload_manager = get_payload_manager()
+            pm_payloads = self.payload_manager.get_payloads('directory_traversal', source='both')
+            existing = set(self.BASIC_PAYLOADS + self.ENCODED_PAYLOADS + self.PHP_WRAPPER_PAYLOADS)
+            extra = [p for p in pm_payloads if p not in existing]
+            self.BASIC_PAYLOADS = list(self.BASIC_PAYLOADS) + extra
+            stats = self.payload_manager.get_stats()
+            count = stats['total'].get('directory_traversal', 0)
+            logger.info(f'Directory Traversal: {count} payloads available ({len(extra)} new from PayloadManager)')
+        except Exception as e:
+            self.payload_manager = None
+            logger.debug(f'PayloadManager not available: {e}')
 
     # Basic traversal payloads
     BASIC_PAYLOADS = [
@@ -230,7 +249,7 @@ class DirectoryTraversalScanner(BaseScanner):
 
     def _make_finding(self, result):
         technique = result['technique']
-        return {
+        finding = {
             'vuln_type': 'directory_traversal',
             'name': f'Path Traversal / LFI ({technique})',
             'description': (
@@ -253,3 +272,6 @@ class DirectoryTraversalScanner(BaseScanner):
                 'input directly to file operations. Disable PHP wrappers in php.ini.'
             )
         }
+        if 'difficulty' in result:
+            finding['difficulty'] = result['difficulty']
+        return finding

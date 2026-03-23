@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}ML Statistics{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-chart-bar me-2" style="color: var(--accent);"></i>ML Training Statistics
+            </h2>
+            <p class="text-muted mb-0">Overview of training data and model performance</p>
+        </div>
+        <a href="{{ url_for('ml_admin.labeling') }}" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-tag me-1"></i> Go to Labeling
+        </a>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-2">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Total</h6>
+                    <h3 class="mb-0" style="color: var(--accent);">{{ stats.total_attempts }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Labeled</h6>
+                    <h3 class="mb-0" style="color: var(--success);">{{ stats.labeled_attempts }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Unlabeled</h6>
+                    <h3 class="mb-0" style="color: var(--warning);">{{ stats.unlabeled }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">True Positives</h6>
+                    <h3 class="mb-0" style="color: var(--danger);">{{ stats.true_positives }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">False Positives</h6>
+                    <h3 class="mb-0" style="color: var(--success);">{{ stats.false_positives }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress -->
+    {% if stats.total_attempts > 0 %}
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border);">
+        <div class="card-body">
+            <h5 class="card-title text-muted mb-3">Labeling Progress</h5>
+            {% set pct = ((stats.labeled_attempts / stats.total_attempts) * 100) | round(1) %}
+            <div class="progress" style="height: 24px; background: var(--bg-secondary);">
+                <div class="progress-bar"
+                    style="width: {{ pct }}%; background: linear-gradient(90deg, var(--accent), var(--accent2));">
+                    {{ pct }}%
+                </div>
+            </div>
+            <p class="text-muted mt-2 mb-0">
+                {{ stats.labeled_attempts }} of {{ stats.total_attempts }} attempts labeled
+                {% if stats.labeled_attempts < 100 %} · Need {{ 100 - stats.labeled_attempts }} more for ML training {%
+                    else %} · <span style="color: var(--success);"><i class="fas fa-check me-1"></i>Ready for ML
+                    training</span>
+                    {% endif %}
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- By Type Breakdown -->
+    <div class="card" style="background: var(--bg-card); border: 1px solid var(--border);">
+        <div class="card-body">
+            <h5 class="card-title text-muted mb-3">Breakdown by Type</h5>
+            {% if stats.by_type %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover mb-0" style="background: transparent;">
+                    <thead>
+                        <tr>
+                            <th>Vulnerability Type</th>
+                            <th class="text-center">Total Attempts</th>
+                            <th class="text-center">True Positives</th>
+                            <th class="text-center">False Positive Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in stats.by_type %}
+                        <tr>
+                            <td>
+                                <span class="badge bg-info me-2">{{ item.type }}</span>
+                            </td>
+                            <td class="text-center">{{ item.total }}</td>
+                            <td class="text-center">{{ item.true_positives }}</td>
+                            <td class="text-center">
+                                {% if item.total > 0 %}
+                                {% set fp_rate = (((item.total - item.true_positives) / item.total) * 100) | round(1) %}
+                                <span
+                                    class="{{ 'text-success' if fp_rate < 20 else 'text-warning' if fp_rate < 50 else 'text-danger' }}">
+                                    {{ fp_rate }}%
+                                </span>
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No training data available yet. Run scans to collect data.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

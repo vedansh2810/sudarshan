@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}ML Data Labeling{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-brain me-2" style="color: var(--accent);"></i>ML Data Labeling</h2>
+            <p class="text-muted mb-0">Review and label scan findings as true or false positives</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('ml_admin.stats') }}" class="btn btn-outline-info btn-sm">
+                <i class="fas fa-chart-bar me-1"></i> Statistics
+            </a>
+            <a href="{{ url_for('ml_admin.export_data') }}" class="btn btn-outline-success btn-sm">
+                <i class="fas fa-download me-1"></i> Export
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h5 class="text-muted mb-1">Total Attempts</h5>
+                    <h2 class="mb-0" style="color: var(--accent);">{{ stats.total_attempts }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h5 class="text-muted mb-1">Labeled</h5>
+                    <h2 class="mb-0" style="color: var(--success);">{{ stats.labeled_attempts }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h5 class="text-muted mb-1">Unlabeled</h5>
+                    <h2 class="mb-0" style="color: var(--warning);">{{ stats.unlabeled }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body text-center">
+                    <h5 class="text-muted mb-1">True Positives</h5>
+                    <h2 class="mb-0" style="color: var(--danger);">{{ stats.true_positives }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="mb-4">
+        <form method="GET" class="d-flex gap-2 align-items-center">
+            <label class="text-muted">Filter by type:</label>
+            <select name="type" class="form-select form-select-sm"
+                style="width: auto; background: var(--bg-card); color: var(--text-primary); border-color: var(--border);"
+                onchange="this.form.submit()">
+                <option value="">All Types</option>
+                <option value="sql_injection" {{ 'selected' if selected_type=='sql_injection' }}>SQL Injection</option>
+                <option value="xss" {{ 'selected' if selected_type=='xss' }}>XSS</option>
+                <option value="csrf" {{ 'selected' if selected_type=='csrf' }}>CSRF</option>
+                <option value="command_injection" {{ 'selected' if selected_type=='command_injection' }}>Command
+                    Injection</option>
+                <option value="directory_traversal" {{ 'selected' if selected_type=='directory_traversal' }}>Directory
+                    Traversal</option>
+                <option value="idor" {{ 'selected' if selected_type=='idor' }}>IDOR</option>
+            </select>
+        </form>
+    </div>
+
+    <!-- Attempts List -->
+    {% if attempts %}
+    <div class="row g-3">
+        {% for attempt in attempts %}
+        <div class="col-12" id="attempt-{{ attempt.id }}">
+            <div class="card" style="background: var(--bg-card); border: 1px solid var(--border);">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <span
+                                class="badge bg-{{ 'danger' if attempt.severity == 'critical' else 'warning' if attempt.severity == 'high' else 'info' }} me-2">
+                                {{ attempt.vulnerability_type | upper | e }}
+                            </span>
+                            <span class="badge bg-secondary me-2">{{ attempt.technique | e }}</span>
+                            <span class="text-muted small">
+                                <i class="fas fa-clock me-1"></i>{{ attempt.timestamp.strftime('%Y-%m-%d %H:%M') if
+                                attempt.timestamp }}
+                            </span>
+                        </div>
+                        <span class="badge bg-dark">Confidence: {{ attempt.confidence | round(1) if attempt.confidence
+                            else 'N/A' }}%</span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="p-2 rounded" style="background: var(--bg-secondary);">
+                                <small class="text-muted d-block mb-1">URL</small>
+                                <code class="text-break"
+                                    style="color: var(--accent); font-size: 0.85em;">{{ attempt.url | truncate(120) | e }}</code>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-2 rounded" style="background: var(--bg-secondary);">
+                                <small class="text-muted d-block mb-1">Parameter</small>
+                                <code style="color: var(--accent2);">{{ (attempt.parameter or 'N/A') | e }}</code>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-2 rounded" style="background: var(--bg-secondary);">
+                                <small class="text-muted d-block mb-1">Method</small>
+                                <code>{{ attempt.method | e }}</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Payload</small>
+                        <pre class="p-2 rounded mb-0"
+                            style="background: var(--bg-secondary); color: #f87171; font-size: 0.85em; overflow-x: auto; white-space: pre-wrap;">{{ attempt.payload | truncate(300) | e }}</pre>
+                    </div>
+
+                    <!-- Label Buttons -->
+                    <div class="d-flex gap-2 justify-content-end label-buttons">
+                        <button class="btn btn-outline-danger btn-sm" onclick="labelAttempt({{ attempt.id }}, true)">
+                            <i class="fas fa-bug me-1"></i> True Positive
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="labelAttempt({{ attempt.id }}, false)">
+                            <i class="fas fa-check me-1"></i> False Positive
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+        <h5 class="text-muted">No unlabeled attempts</h5>
+        <p class="text-muted">Run some scans to generate data for labeling.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function labelAttempt(attemptId, isTruePositive) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        fetch(`/ml/label/${attemptId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({
+                is_true_positive: isTruePositive,
+                notes: '',
+            }),
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const card = document.getElementById(`attempt-${attemptId}`);
+                    const label = isTruePositive ? 'TRUE POSITIVE' : 'FALSE POSITIVE';
+                    const color = isTruePositive ? 'var(--danger)' : 'var(--success)';
+                    const btns = card.querySelector('.label-buttons');
+                    btns.innerHTML = `<span class="badge" style="background: ${color}; font-size: 0.9em;">${label}</span>`;
+                    card.style.opacity = '0.6';
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown'));
+                }
+            })
+            .catch(err => alert('Network error: ' + err));
+    }
+</script>
+{% endblock %}

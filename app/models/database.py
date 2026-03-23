@@ -10,9 +10,10 @@ class UserModel(db.Model):
     __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    supabase_uid = db.Column(db.String(36), unique=True, nullable=False, index=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     scans = db.relationship('ScanModel', backref='user', lazy='dynamic',
@@ -24,6 +25,7 @@ class ScanModel(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True, index=True)
     target_url = db.Column(db.Text, nullable=False)
     scan_mode = db.Column(db.String(20), default='active')
     scan_speed = db.Column(db.String(20), default='balanced')
@@ -67,6 +69,10 @@ class VulnerabilityModel(db.Model):
     request_data = db.Column(db.Text)
     response_data = db.Column(db.Text)
     remediation = db.Column(db.Text)
+    ai_analysis = db.Column(db.Text)  # JSON string from LLM analysis
+    ai_narrative = db.Column(db.Text)  # JSON string from attack narrative
+    likely_false_positive = db.Column(db.Boolean, default=False)
+    fp_confidence = db.Column(db.Float, nullable=True)
     found_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -93,8 +99,37 @@ class ScanLogModel(db.Model):
 
 
 def init_db():
-    """Create all tables. Called from app factory after db.init_app()."""
+    """Create all tables and apply column migrations for existing tables."""
     db.create_all()
+
+    # Apply column migrations for existing tables that need new columns
+    from sqlalchemy import inspect, text
+    inspector = inspect(db.engine)
+
+    # Migration: add org_id to scans table (Phase 1.4)
+    if 'scans' in inspector.get_table_names():
+        existing_cols = {c['name'] for c in inspector.get_columns('scans')}
+        if 'org_id' not in existing_cols:
+            with db.engine.begin() as conn:
+                conn.execute(text(
+                    'ALTER TABLE scans ADD COLUMN org_id INTEGER REFERENCES organizations(id)'
+                ))
+
+    # Migration: add AI columns to vulnerabilities table
+    if 'vulnerabilities' in inspector.get_table_names():
+        existing_cols = {c['name'] for c in inspector.get_columns('vulnerabilities')}
+        new_cols = {
+            'ai_analysis': 'TEXT',
+            'ai_narrative': 'TEXT',
+            'likely_false_positive': 'BOOLEAN DEFAULT FALSE',
+            'fp_confidence': 'FLOAT',
+        }
+        for col_name, col_type in new_cols.items():
+            if col_name not in existing_cols:
+                with db.engine.begin() as conn:
+                    conn.execute(text(
+                        f'ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_type}'
+                    ))
 
 
 # ── Backward-compatible helpers for scan_manager.py ──────────────────────
@@ -118,23 +153,26 @@ def _convert_placeholders(query, args):
     return converted_query, params
 
 
-def query_db(query, args=(), one=False):
-    """Legacy compatibility: run raw SQL SELECT via SQLAlchemy."""
-    converted, params = _convert_placeholders(query, args)
-    result = db.session.execute(db.text(converted), params)
-    rows = [dict(row._mapping) for row in result]
-    if one:
-        return rows[0] if rows else None
-    return rows
-
-
 def execute_db(query, args=()):
-    """Legacy compatibility: run raw SQL INSERT/UPDATE/DELETE via SQLAlchemy."""
+    """Legacy compatibility: run raw SQL INSERT/UPDATE/DELETE via SQLAlchemy.
+
+    Works with both SQLite and PostgreSQL by using RETURNING for INSERTs.
+    """
     converted, params = _convert_placeholders(query, args)
+
+    # For INSERT statements on PostgreSQL, add RETURNING id to get the new row's PK
+    is_insert = converted.strip().upper().startswith('INSERT')
+    if is_insert and 'RETURNING' not in converted.upper():
+        converted = converted.rstrip().rstrip(';') + ' RETURNING id'
+
     result = db.session.execute(db.text(converted), params)
     db.session.commit()
-    # For INSERT, try to get the last inserted row id
-    try:
-        return result.lastrowid
-    except Exception:
-        return None
+
+    if is_insert:
+        try:
+            row = result.fetchone()
+            return row[0] if row else None
+        except Exception:
+            return None
+    return None
+

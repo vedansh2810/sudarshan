@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, session, redirect, url_for, jsonify
 from app.models.scan import Scan
-from app.models.database import db, ScanModel
+from app.models.database import ScanModel
 from app.utils.auth_utils import login_required
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -29,10 +29,10 @@ def index():
 
     stats = {
         'total_scans': total['cnt'] if total else 0,
-        'critical': vulns['crit'] or 0 if vulns else 0,
-        'high': vulns['high'] or 0 if vulns else 0,
-        'medium': vulns['med'] or 0 if vulns else 0,
-        'low': vulns['low'] or 0 if vulns else 0,
+        'critical': (vulns['crit'] or 0) if vulns else 0,
+        'high': (vulns['high'] or 0) if vulns else 0,
+        'medium': (vulns['med'] or 0) if vulns else 0,
+        'low': (vulns['low'] or 0) if vulns else 0,
     }
 
     # Calculate severity percentages for the bar chart

@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, session, redirect, url_for, request, jsonify
 from app.models.scan import Scan
-from app.models.database import db, ScanModel
+from app.models.database import ScanModel
 from app.utils.auth_utils import login_required
+from app import csrf
 from sqlalchemy import func
 import math
 
@@ -88,6 +89,7 @@ def delete(scan_id):
     return redirect(url_for('history.index'))
 
 @history_bp.route('/api/scans/<int:scan_id>', methods=['DELETE'])
+@csrf.exempt
 @login_required
 def api_delete(scan_id):
     """API endpoint for JS-based deletion"""

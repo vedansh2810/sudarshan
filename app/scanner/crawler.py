@@ -6,7 +6,7 @@ import time
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.models.database import execute_db
+from app.models.database import db, CrawledUrlModel
 
 logger = logging.getLogger(__name__)
 
@@ -81,20 +81,70 @@ class Crawler:
     # ── Robots.txt ───────────────────────────────────────────────────
 
     def _parse_robots(self):
+        """Parse robots.txt for Disallow/Allow paths and Sitemap references."""
+        self._robots_discovered_paths = []  # paths from Allow + Disallow for discovery
+        self._sitemap_urls = []  # Sitemap URLs from robots.txt
         try:
             robots_url = f"{self.target_url}/robots.txt"
             r = self.session.get(robots_url, timeout=self.timeout)
             if r.status_code == 200:
                 for line in r.text.split('\n'):
-                    if line.lower().startswith('disallow:'):
-                        path = line.split(':', 1)[1].strip()
+                    stripped = line.strip()
+                    if stripped.lower().startswith('disallow:'):
+                        path = stripped.split(':', 1)[1].strip()
                         if path:
                             self.disallowed_paths.append(path)
-                logger.info(f"Parsed robots.txt: {len(self.disallowed_paths)} disallowed paths")
+                            # Also record for discovery (hidden paths)
+                            if path != '/' and not path.endswith('*'):
+                                self._robots_discovered_paths.append(path)
+                    elif stripped.lower().startswith('allow:'):
+                        path = stripped.split(':', 1)[1].strip()
+                        if path and path != '/' and not path.endswith('*'):
+                            self._robots_discovered_paths.append(path)
+                    elif stripped.lower().startswith('sitemap:'):
+                        sitemap_url = stripped.split(':', 1)[1].strip()
+                        # Handle "Sitemap: https://..." (the split removes the https:)
+                        if not sitemap_url.startswith('http'):
+                            sitemap_url = stripped.split(' ', 1)[1].strip() if ' ' in stripped else ''
+                        if sitemap_url:
+                            self._sitemap_urls.append(sitemap_url)
+                logger.info(
+                    f"Parsed robots.txt: {len(self.disallowed_paths)} disallowed, "
+                    f"{len(self._robots_discovered_paths)} discovery paths, "
+                    f"{len(self._sitemap_urls)} sitemap(s)"
+                )
         except requests.exceptions.RequestException as e:
             logger.debug(f"Could not fetch robots.txt: {e}")
         except Exception as e:
             logger.warning(f"Error parsing robots.txt: {e}")
+
+    # ── Sitemap.xml ──────────────────────────────────────────────────
+
+    def _parse_sitemap(self):
+        """Fetch and parse sitemap.xml for additional URLs.
+
+        Checks /sitemap.xml by default plus any Sitemap URLs found
+        in robots.txt.  Returns a list of discovered same-domain URLs.
+        """
+        urls = set()
+        sitemap_locs = list(getattr(self, '_sitemap_urls', []))
+        sitemap_locs.append(f"{self.target_url}/sitemap.xml")
+
+        for sitemap_url in sitemap_locs:
+            try:
+                resp = self.session.get(sitemap_url, timeout=self.timeout, verify=False)
+                if resp.status_code != 200:
+                    continue
+                # Extract <loc> tags (works for both sitemap index and url entries)
+                for match in re.findall(r'<loc>\s*([^<]+?)\s*</loc>', resp.text, re.I):
+                    normalized = self._normalize_url(match.strip())
+                    if self._is_same_domain(normalized):
+                        urls.add(normalized)
+            except Exception as e:
+                logger.debug(f"Could not parse sitemap {sitemap_url}: {e}")
+
+        logger.info(f"Sitemap discovery: {len(urls)} URLs found")
+        return list(urls)[:200]  # Cap to avoid huge sitemaps
 
     def _is_allowed(self, url):
         parsed = urlparse(url)
@@ -164,7 +214,10 @@ class Crawler:
     def _extract_links(self, html, base_url):
         links = set()
         try:
-            soup = BeautifulSoup(html, 'lxml')
+            try:
+                soup = BeautifulSoup(html, 'lxml')
+            except Exception:
+                soup = BeautifulSoup(html, 'html.parser')
 
             # Standard href-bearing tags
             for tag in soup.find_all(['a', 'link'], href=True):
@@ -185,19 +238,39 @@ class Crawler:
                     links.add(self._normalize_url(full_url))
 
             # Extract URLs from inline JavaScript (window.location, href=, etc.)
+            js_url_patterns = [
+                r'(?:href|src|url|location)\s*[=:]\s*["\']([^"\']+)["\']',
+                r'fetch\s*\(\s*["\']([^"\']+)["\']',
+                r'axios\s*\.\s*(?:get|post|put|delete|patch)\s*\(\s*["\']([^"\']+)["\']',
+                r'window\.location(?:\.href)?\s*=\s*["\']([^"\']+)["\']',
+                r'\.open\s*\(\s*["\']([^"\']+)["\']',
+                r'["\'](/(?:api|auth|admin|user|account)[^"\' ]*)["\']',
+            ]
             for script in soup.find_all('script'):
-                if script.string:
-                    js_urls = re.findall(
-                        r'(?:href|src|url|location)\s*[=:]\s*["\']([^"\']+)["\']',
-                        script.string, re.IGNORECASE
-                    )
-                    for js_url in js_urls:
-                        full_url = urljoin(base_url, js_url)
-                        if self._is_same_domain(full_url):
-                            links.add(self._normalize_url(full_url))
+                js_text = script.string or ''
+                # Also handle external JS files
+                if not js_text and script.get('src'):
+                    js_src = urljoin(base_url, script['src'])
+                    if self._is_same_domain(js_src):
+                        try:
+                            js_resp = self.session.get(
+                                js_src, timeout=self.timeout, verify=False
+                            )
+                            if js_resp.status_code == 200:
+                                js_text = js_resp.text or ''
+                        except Exception:
+                            pass
+                if js_text:
+                    for pattern in js_url_patterns:
+                        for js_url in re.findall(pattern, js_text, re.IGNORECASE):
+                            # Skip data URIs, fragments, and template literals
+                            if js_url.startswith(('data:', 'javascript:', '#', '${')):
+                                continue
+                            full_url = urljoin(base_url, js_url)
+                            if self._is_same_domain(full_url):
+                                links.add(self._normalize_url(full_url))
 
             # Extract URLs from HTML comments
-            comments = soup.find_all(string=lambda text: isinstance(text, type(soup.new_string(''))) and '<!--' not in str(type(text)))
             for comment in soup.find_all(string=lambda t: t and hasattr(t, 'extract') and str(type(t).__name__) == 'Comment'):
                 comment_urls = re.findall(r'(?:href|src|action)\s*=\s*["\']([^"\']+)["\']', str(comment))
                 for curl in comment_urls:
@@ -212,7 +285,10 @@ class Crawler:
     def _extract_forms(self, html, base_url):
         forms = []
         try:
-            soup = BeautifulSoup(html, 'lxml')
+            try:
+                soup = BeautifulSoup(html, 'lxml')
+            except Exception:
+                soup = BeautifulSoup(html, 'html.parser')
             for form in soup.find_all('form'):
                 action = form.get('action', '')
                 method = form.get('method', 'get').lower()
@@ -367,6 +443,26 @@ class Crawler:
         """
         queue = [(self.target_url, 0)]
 
+        # Seed queue with sitemap.xml URLs
+        try:
+            sitemap_urls = self._parse_sitemap()
+            for surl in sitemap_urls:
+                normalized = self._normalize_url(surl)
+                if normalized not in self.visited_urls:
+                    queue.append((surl, 1))
+        except Exception as e:
+            logger.debug(f"Sitemap seeding failed: {e}")
+
+        # Seed queue with robots.txt discovered paths
+        for rpath in getattr(self, '_robots_discovered_paths', []):
+            try:
+                rurl = self.target_url.rstrip('/') + rpath
+                normalized = self._normalize_url(rurl)
+                if normalized not in self.visited_urls:
+                    queue.append((rurl, 1))
+            except Exception:
+                pass
+
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             while queue and not self.stopped:
                 # Check URL limit
@@ -398,13 +494,17 @@ class Crawler:
                         # Persist to DB
                         if scan_id:
                             try:
-                                execute_db(
-                                    '''INSERT INTO crawled_urls (scan_id, url, status_code, forms_found, params_found)
-                                       VALUES (?, ?, ?, ?, ?)''',
-                                    (scan_id, url, status_code,
-                                     url_info.get('forms', 0), url_info.get('params', 0))
+                                crawled = CrawledUrlModel(
+                                    scan_id=scan_id,
+                                    url=url,
+                                    status_code=status_code,
+                                    forms_found=url_info.get('forms', 0),
+                                    params_found=url_info.get('params', 0)
                                 )
+                                db.session.add(crawled)
+                                db.session.commit()
                             except Exception as e:
+                                db.session.rollback()
                                 logger.debug(f"DB insert error for crawled URL: {e}")
 
                         # Callback

@@ -1,8 +1,12 @@
 import re
 import random
 import string
+import logging
 from urllib.parse import urlparse, parse_qs
 from app.scanner.vulnerabilities.base import BaseScanner
+from app.scanner.payload_manager import get_payload_manager
+
+logger = logging.getLogger(__name__)
 
 
 class XSSScanner(BaseScanner):
@@ -14,6 +18,34 @@ class XSSScanner(BaseScanner):
     MARKER = 'xSs' + ''.join(random.choices(string.digits, k=6))
 
     # ── Payload categories ───────────────────────────────────────────
+
+    def __init__(self, session=None, timeout=8, delay=0.5):
+        super().__init__(session, timeout, delay)
+        try:
+            self.payload_manager = get_payload_manager()
+            pm_payloads = self.payload_manager.get_payloads('xss', source='both')
+            # Enrich BASIC_PAYLOADS with PayloadManager payloads (instance-level copy)
+            existing = set(self.BASIC_PAYLOADS + self.EVENT_PAYLOADS +
+                           self.ENCODING_PAYLOADS + self.ATTR_PAYLOADS +
+                           self.WAF_BYPASS_PAYLOADS)
+            extra = [p for p in pm_payloads if p not in existing]
+            self.BASIC_PAYLOADS = list(self.BASIC_PAYLOADS) + extra
+            stats = self.payload_manager.get_stats()
+            count = stats['total'].get('xss', 0)
+            logger.info(f'XSS: {count} payloads available ({len(extra)} new from PayloadManager)')
+        except Exception as e:
+            self.payload_manager = None
+            logger.debug(f'PayloadManager not available: {e}')
+
+        # AI-generated smart payloads
+        try:
+            smart = self._get_smart_payloads('xss')
+            if smart:
+                existing_set = set(self.BASIC_PAYLOADS)
+                new_smart = [p for p in smart if p not in existing_set]
+                self.BASIC_PAYLOADS = list(self.BASIC_PAYLOADS) + new_smart
+        except Exception:
+            pass
 
     # Basic script injection
     BASIC_PAYLOADS = [
@@ -378,7 +410,7 @@ class XSSScanner(BaseScanner):
                         seen.add(key)
                         ctx = result.get('context', 'html')
                         confidence = result.get('confidence', 80)
-                        self.findings.append({
+                        finding = {
                             'vuln_type': 'xss',
                             'name': f'Cross-Site Scripting (XSS) — {ctx} context',
                             'description': (
@@ -402,7 +434,10 @@ class XSSScanner(BaseScanner):
                                 'JS-encode for script context, URL-encode for href attributes. '
                                 'Deploy Content Security Policy (CSP). Use auto-escaping template engines.'
                             )
-                        })
+                        }
+                        if result.get('difficulty'):
+                            finding['difficulty'] = result['difficulty']
+                        self.findings.append(finding)
 
             # ── URL parameters ──
             elif isinstance(point, dict) and 'name' in point:
@@ -413,7 +448,7 @@ class XSSScanner(BaseScanner):
                         seen.add(key)
                         ctx = result.get('context', 'html')
                         confidence = result.get('confidence', 80)
-                        self.findings.append({
+                        finding = {
                             'vuln_type': 'xss',
                             'name': f'Reflected XSS — {ctx} context',
                             'description': (
@@ -436,7 +471,10 @@ class XSSScanner(BaseScanner):
                                 'Use Content Security Policy (CSP). '
                                 'Sanitize all user input with an allowlist approach.'
                             )
-                        })
+                        }
+                        if result.get('difficulty'):
+                            finding['difficulty'] = result['difficulty']
+                        self.findings.append(finding)
 
         return self.findings
 

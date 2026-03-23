@@ -1,6 +1,6 @@
 from app.models.database import db, ScanModel, ScanLogModel
 from datetime import datetime, timezone
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 
 class Scan:
@@ -15,9 +15,11 @@ class Scan:
         return {c.name: getattr(scan, c.name) for c in ScanModel.__table__.columns}
 
     @staticmethod
-    def create(user_id, target_url, scan_mode='active', scan_speed='balanced', crawl_depth=3):
+    def create(user_id, target_url, scan_mode='active', scan_speed='balanced',
+               crawl_depth=3, org_id=None):
         scan = ScanModel(
             user_id=user_id,
+            org_id=org_id,
             target_url=target_url,
             scan_mode=scan_mode,
             scan_speed=scan_speed,
@@ -33,8 +35,38 @@ class Scan:
         return Scan._row_to_dict(db.session.get(ScanModel, scan_id))
 
     @staticmethod
+    def get_by_id_for_user(scan_id, user_id):
+        """Get scan by ID with ownership/org-membership check.
+        Returns scan dict if user has access, else None."""
+        scan = db.session.get(ScanModel, scan_id)
+        if not scan:
+            return None
+        if scan.user_id == user_id:
+            return Scan._row_to_dict(scan)
+        # Check org membership
+        if scan.org_id:
+            from app.models.organization import Organization
+            if Organization.user_has_access(scan.org_id, user_id):
+                return Scan._row_to_dict(scan)
+        return None
+
+    @staticmethod
+    def for_user_query(user_id):
+        """Base query returning scans the user can access (own + org shared)."""
+        from app.models.organization import Organization
+        org_ids = Organization.get_user_org_ids(user_id)
+        if org_ids:
+            return ScanModel.query.filter(
+                or_(
+                    ScanModel.user_id == user_id,
+                    ScanModel.org_id.in_(org_ids)
+                )
+            )
+        return ScanModel.query.filter_by(user_id=user_id)
+
+    @staticmethod
     def get_recent(user_id, limit=10):
-        scans = ScanModel.query.filter_by(user_id=user_id) \
+        scans = Scan.for_user_query(user_id) \
             .order_by(ScanModel.started_at.desc()).limit(limit).all()
         return [Scan._row_to_dict(s) for s in scans]
 
@@ -51,10 +83,10 @@ class Scan:
 
         total_dict = {'cnt': total or 0}
         vulns_dict = {
-            'crit': vulns[0] or 0 if vulns else 0,
-            'high': vulns[1] or 0 if vulns else 0,
-            'med': vulns[2] or 0 if vulns else 0,
-            'low': vulns[3] or 0 if vulns else 0,
+            'crit': (vulns[0] or 0) if vulns else 0,
+            'high': (vulns[1] or 0) if vulns else 0,
+            'med': (vulns[2] or 0) if vulns else 0,
+            'low': (vulns[3] or 0) if vulns else 0,
         }
         return total_dict, vulns_dict
 
@@ -100,6 +132,43 @@ class Scan:
         log = ScanLogModel(scan_id=scan_id, log_type=log_type, message=message)
         db.session.add(log)
         db.session.commit()
+
+    @staticmethod
+    def update_total_urls(scan_id, total_urls):
+        """Update only the total_urls count (used during crawling phase)."""
+        scan = db.session.get(ScanModel, scan_id)
+        if scan:
+            scan.total_urls = total_urls
+            db.session.commit()
+
+    @staticmethod
+    def recover_orphaned(max_age_minutes=10):
+        """Reset scans stuck in 'running'/'pending' after a server restart.
+
+        Any scan older than max_age_minutes that is still 'running' or
+        'pending' is assumed to have been orphaned by a crash.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+        orphaned = ScanModel.query.filter(
+            ScanModel.status.in_(['running', 'pending']),
+            ScanModel.started_at < cutoff
+        ).all()
+        for scan in orphaned:
+            scan.status = 'error'
+            log = ScanLogModel(
+                scan_id=scan.id,
+                log_type='error',
+                message='[!] Scan terminated: server restarted while scan was in progress'
+            )
+            db.session.add(log)
+            logger.warning(f"Recovered orphaned scan {scan.id} (was '{scan.status}')")
+        if orphaned:
+            db.session.commit()
+            logger.info(f"Recovered {len(orphaned)} orphaned scan(s)")
+        return len(orphaned)
 
     @staticmethod
     def delete(scan_id):
