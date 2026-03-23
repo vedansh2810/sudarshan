@@ -46,17 +46,17 @@
     </div>
 
     <!-- Controls -->
-    <div class="flex gap-3">
+    <div class="flex gap-3" id="scan-controls">
       <button onclick="scanControl('pause')" id="btn-pause"
-        class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-amber-500/30 bg-amber-500/10 text-amber-500 cursor-pointer transition-all hover:bg-amber-500/20">
+        class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-amber-500/30 bg-amber-500/10 text-amber-500 cursor-pointer transition-all hover:bg-amber-500/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-amber-500/10">
         <span class="material-symbols-outlined text-lg">pause</span> Pause
       </button>
       <button onclick="scanControl('resume')" id="btn-resume" disabled
-        class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 disabled:opacity-30 cursor-pointer transition-all hover:bg-emerald-500/20">
+        class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all hover:bg-emerald-500/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-emerald-500/10">
         <span class="material-symbols-outlined text-lg">play_arrow</span> Resume
       </button>
       <button onclick="scanControl('stop')" id="btn-stop"
-        class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-red-500/30 bg-red-500/10 text-red-500 cursor-pointer transition-all hover:bg-red-500/20">
+        class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-red-500/30 bg-red-500/10 text-red-500 cursor-pointer transition-all hover:bg-red-500/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-red-500/10">
         <span class="material-symbols-outlined text-lg">stop</span> Stop
       </button>
     </div>
@@ -88,6 +88,7 @@
   const sevColors = { critical:'#ff2d55', high:'#ff6400', medium:'#ffb800', low:'#00d46a', info:'#3b82f6' };
   const logViewer = document.getElementById('log-viewer');
   let firstLog = true;
+  let currentStatus = '{{ scan.status }}';
 
   function updateProgress(total, tested) {
     const pct = total > 0 ? Math.round((tested / total) * 100) : 0;
@@ -97,15 +98,28 @@
   }
 
   function setStatus(status) {
+    currentStatus = status;
     const el = document.getElementById('scan-status');
     el.textContent = status;
-    el.className = status === 'running' ? 'text-primary' : status === 'paused' ? 'text-amber-500' : 'text-emerald-500';
+    el.className = status === 'running' ? 'text-primary' :
+                   status === 'paused'  ? 'text-amber-500' :
+                   status === 'stopped' ? 'text-red-400' :
+                   status === 'completed' ? 'text-emerald-500' :
+                   'text-slate-400';
 
     const done = ['completed','stopped','error'].includes(status);
-    document.getElementById('btn-pause').disabled = !['running'].includes(status);
-    document.getElementById('btn-resume').disabled = !['paused'].includes(status);
-    document.getElementById('btn-stop').disabled = done;
-    if (done) document.getElementById('results-btn').classList.remove('hidden');
+    const btnPause  = document.getElementById('btn-pause');
+    const btnResume = document.getElementById('btn-resume');
+    const btnStop   = document.getElementById('btn-stop');
+
+    btnPause.disabled  = status !== 'running';
+    btnResume.disabled = status !== 'paused';
+    btnStop.disabled   = done;
+
+    if (done) {
+      document.getElementById('results-btn').classList.remove('hidden');
+      document.getElementById('scan-controls').style.display = 'none';
+    }
   }
 
   function addLog(msg, level, ts) {
@@ -130,8 +144,48 @@
     list.appendChild(div);
   }
 
-  function scanControl(action) {
-    fetch('/scan/' + scanId + '/' + action, { method: 'POST' });
+  async function scanControl(action) {
+    const btnPause  = document.getElementById('btn-pause');
+    const btnResume = document.getElementById('btn-resume');
+    const btnStop   = document.getElementById('btn-stop');
+
+    // Immediately update button states for responsiveness
+    if (action === 'pause') {
+      btnPause.disabled = true;
+      btnResume.disabled = false;
+      setStatus('paused');
+    } else if (action === 'resume') {
+      btnResume.disabled = true;
+      btnPause.disabled = false;
+      setStatus('running');
+    } else if (action === 'stop') {
+      btnPause.disabled = true;
+      btnResume.disabled = true;
+      btnStop.disabled = true;
+      setStatus('stopped');
+    }
+
+    try {
+      const res = await fetch('/scan/' + scanId + '/' + action, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) {
+        // Revert on failure — re-poll the real status
+        const stRes = await fetch('/scan/' + scanId + '/status');
+        if (stRes.ok) {
+          const st = await stRes.json();
+          setStatus(st.status);
+        }
+      }
+    } catch (err) {
+      // Network error — poll the real status to recover
+      try {
+        const stRes = await fetch('/scan/' + scanId + '/status');
+        if (stRes.ok) {
+          const st = await stRes.json();
+          setStatus(st.status);
+        }
+      } catch (_) {}
+    }
   }
 
   // SSE Stream
@@ -158,18 +212,20 @@
     } catch(err) {}
   };
 
-  // Client-side elapsed timer (always works, independent of status polling)
+  // Client-side elapsed timer
   const scanStart = Date.now();
   setInterval(() => {
       const el = document.getElementById('stat-elapsed');
-      if (el) el.textContent = Math.round((Date.now() - scanStart) / 1000) + 's';
+      if (el && !['completed','stopped','error'].includes(currentStatus)) {
+        el.textContent = Math.round((Date.now() - scanStart) / 1000) + 's';
+      }
   }, 1000);
 
   // Poll status as backup
   setInterval(async () => {
     try {
       const res = await fetch('/scan/' + scanId + '/status');
-      if (!res.ok) return;  // Gracefully handle non-200 responses
+      if (!res.ok) return;
       const st = await res.json();
       setStatus(st.status);
       document.getElementById('stat-total').textContent = st.total_urls || 0;
