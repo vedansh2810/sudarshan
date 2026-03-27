@@ -3,6 +3,7 @@ import re
 import logging
 from datetime import datetime, timezone
 from app.models.database import db
+from app.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,22 @@ class OrgMembershipModel(db.Model):
     )
 
     user = db.relationship('UserModel', backref=db.backref('memberships', lazy='dynamic'))
+
+
+class OrgSettingsModel(db.Model):
+    """Per-organization configuration and policies."""
+    __tablename__ = 'org_settings'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), unique=True, nullable=False)
+    max_scans_per_month = db.Column(db.Integer, nullable=True)  # None = use plan default
+    allowed_domains = db.Column(db.Text, nullable=True)  # JSON list of allowed target domains
+    notification_email = db.Column(db.String(200), nullable=True)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    organization = db.relationship('OrganizationModel',
+                                   backref=db.backref('settings', uselist=False, cascade='all, delete-orphan'))
 
 
 # ── Helper class ─────────────────────────────────────────────────────
@@ -174,3 +191,126 @@ class Organization:
             'plan': org.plan,
             'created_at': org.created_at.isoformat() if org.created_at else None,
         }
+
+    @staticmethod
+    def delete_all_data(org_id):
+        """Delete ALL data for an organization (GDPR 'right to erasure').
+
+        Deletes: scans (cascading to vulns, logs, crawled_urls),
+        API keys, webhooks, memberships, settings, and the org itself.
+        """
+        import json
+        try:
+            # Delete scans (cascade handles vulnerabilities, logs, crawled_urls)
+            from app.models.scan import Scan
+            scan_count = Scan.delete_by_org(org_id)
+
+            # Delete org-scoped API keys
+            from app.models.api_key import APIKey
+            APIKey.query.filter_by(org_id=org_id).delete()
+
+            # Delete webhooks owned by org members
+            member_ids = [m.user_id for m in
+                          OrgMembershipModel.query.filter_by(org_id=org_id).all()]
+            if member_ids:
+                from app.models.webhook import Webhook
+                Webhook.query.filter(
+                    Webhook.user_id.in_(member_ids)
+                ).delete(synchronize_session='fetch')
+
+            # Delete settings
+            OrgSettingsModel.query.filter_by(org_id=org_id).delete()
+
+            # Delete memberships
+            OrgMembershipModel.query.filter_by(org_id=org_id).delete()
+
+            # Delete the organization itself
+            org = db.session.get(OrganizationModel, org_id)
+            if org:
+                db.session.delete(org)
+
+            db.session.commit()
+            logger.info(f"GDPR purge: deleted org {org_id} ({scan_count} scans)")
+            return True
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"GDPR purge failed for org {org_id}: {e}")
+            return False
+
+    @staticmethod
+    def get_plan_limits(org_id):
+        """Get resource limits for an organization based on its plan."""
+        org = db.session.get(OrganizationModel, org_id)
+        if not org:
+            return Config.PLAN_LIMITS.get('free', {})
+        plan = org.plan or 'free'
+        return Config.PLAN_LIMITS.get(plan, Config.PLAN_LIMITS.get('free', {}))
+
+    @staticmethod
+    def check_scan_quota(org_id):
+        """Check if the organization has remaining scan quota.
+
+        Returns:
+            (allowed: bool, reason: str)
+        """
+        if not org_id:
+            return True, ''
+
+        limits = Organization.get_plan_limits(org_id)
+        max_scans = limits.get('max_scans_per_month', -1)
+        if max_scans == -1:
+            return True, ''
+
+        # Check custom override from org settings
+        settings = OrgSettingsModel.query.filter_by(org_id=org_id).first()
+        if settings and settings.max_scans_per_month is not None:
+            max_scans = settings.max_scans_per_month
+
+        from app.models.database import ScanModel
+        from datetime import timedelta
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        current_count = ScanModel.query.filter(
+            ScanModel.org_id == org_id,
+            ScanModel.started_at >= month_start
+        ).count()
+
+        if current_count >= max_scans:
+            return False, f'Monthly scan quota reached ({current_count}/{max_scans}). Upgrade your plan.'
+        return True, ''
+
+    @staticmethod
+    def get_settings(org_id):
+        """Get org settings as a dict."""
+        import json
+        settings = OrgSettingsModel.query.filter_by(org_id=org_id).first()
+        if not settings:
+            return {'org_id': org_id, 'max_scans_per_month': None, 'allowed_domains': [], 'notification_email': None}
+        domains = []
+        if settings.allowed_domains:
+            try:
+                domains = json.loads(settings.allowed_domains)
+            except Exception:
+                pass
+        return {
+            'org_id': org_id,
+            'max_scans_per_month': settings.max_scans_per_month,
+            'allowed_domains': domains,
+            'notification_email': settings.notification_email,
+        }
+
+    @staticmethod
+    def update_settings(org_id, **kwargs):
+        """Update org settings. Creates if not exists."""
+        import json
+        settings = OrgSettingsModel.query.filter_by(org_id=org_id).first()
+        if not settings:
+            settings = OrgSettingsModel(org_id=org_id)
+            db.session.add(settings)
+        if 'max_scans_per_month' in kwargs:
+            settings.max_scans_per_month = kwargs['max_scans_per_month']
+        if 'allowed_domains' in kwargs:
+            settings.allowed_domains = json.dumps(kwargs['allowed_domains'])
+        if 'notification_email' in kwargs:
+            settings.notification_email = kwargs['notification_email']
+        db.session.commit()
+        return Organization.get_settings(org_id)

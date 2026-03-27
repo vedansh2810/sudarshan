@@ -131,6 +131,15 @@ def init_db():
                         f'ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_type}'
                     ))
 
+    # Migration: add org_id to api_keys table
+    if 'api_keys' in inspector.get_table_names():
+        existing_cols = {c['name'] for c in inspector.get_columns('api_keys')}
+        if 'org_id' not in existing_cols:
+            with db.engine.begin() as conn:
+                conn.execute(text(
+                    'ALTER TABLE api_keys ADD COLUMN org_id INTEGER REFERENCES organizations(id)'
+                ))
+
 
 # ── Backward-compatible helpers for scan_manager.py ──────────────────────
 # scan_manager.py calls execute_db directly (line 213) and route files

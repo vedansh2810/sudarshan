@@ -49,9 +49,9 @@ class ScanManager:
     _lock = threading.Lock()
 
     def __init__(self):
-        self.active_scans = {}  # scan_id -> scan context (threading mode only)
-        self.sse_queues = {}    # scan_id -> list of queues (threading mode only)
-        self.event_history = defaultdict(list)  # scan_id -> list of serialized SSE events
+        self.active_scans = {}  # scan_id -> scan context (threading-only fallback when NO Redis)
+        self.sse_queues = {}    # scan_id -> list of queues (threading-only fallback when NO Redis)
+        self.event_history = defaultdict(list)  # in-memory fallback only when Redis unavailable
         self._redis = None
         self._redis_checked = False
         self._use_celery = False
@@ -106,13 +106,19 @@ class ScanManager:
                 selected_checks=selected_checks or Config.VULNERABILITY_CHECKS,
                 dvwa_security=dvwa_security
             )
-            # Track as "active" locally for get_status fallback
-            self.active_scans[scan_id] = {
-                'scan_id': scan_id,
-                'status': 'running',
-                'mode': 'celery',
-                'start_time': time.time(),
-            }
+            # Track state in Redis hash — no in-memory dict needed for Celery scans
+            try:
+                redis.hset(f'scan:{scan_id}:state', mapping={
+                    'status': 'running',
+                    'mode': 'celery',
+                    'start_time': str(time.time()),
+                    'tested_urls': '0',
+                    'total_urls': '0',
+                    'findings': '0',
+                })
+                redis.expire(f'scan:{scan_id}:state', 86400)  # 24h TTL
+            except Exception as e:
+                logger.warning(f"Failed to store scan state in Redis: {e}")
             return True
         else:
             # ── Threading fallback ──
@@ -153,11 +159,18 @@ class ScanManager:
     def pause_scan(self, scan_id):
         redis = self._get_redis()
         if redis:
-            # Celery mode: set Redis control key
+            # Redis-backed control for both Celery and threading modes
             redis.set(f'scan:{scan_id}:control', 'paused')
             Scan.update_status(scan_id, 'paused')
+            # Also update in-memory ctx if threading mode with Redis
+            ctx = self.active_scans.get(scan_id)
+            if ctx and ctx.get('mode') == 'threading':
+                ctx['paused'] = True
+                ctx['pause_event'].clear()
+                ctx['status'] = 'paused'
+                self._emit(scan_id, 'log', '[~] Scan paused by user', 'warning')
             return True
-        # Threading mode
+        # Pure in-memory fallback (no Redis at all)
         ctx = self.active_scans.get(scan_id)
         if ctx and ctx['status'] == 'running':
             ctx['paused'] = True
@@ -173,6 +186,12 @@ class ScanManager:
         if redis:
             redis.delete(f'scan:{scan_id}:control')
             Scan.update_status(scan_id, 'running')
+            ctx = self.active_scans.get(scan_id)
+            if ctx and ctx.get('mode') == 'threading':
+                ctx['paused'] = False
+                ctx['pause_event'].set()
+                ctx['status'] = 'running'
+                self._emit(scan_id, 'log', '[+] Scan resumed', 'info')
             return True
         ctx = self.active_scans.get(scan_id)
         if ctx and ctx['status'] == 'paused':
@@ -189,7 +208,7 @@ class ScanManager:
         if redis:
             redis.set(f'scan:{scan_id}:control', 'stopped')
             Scan.update_status(scan_id, 'stopped')
-            # Also try to revoke the Celery task
+            # Revoke Celery task if applicable
             task_id = redis.get(f'scan:{scan_id}:task_id')
             if task_id:
                 try:
@@ -197,9 +216,25 @@ class ScanManager:
                     celery.control.revoke(task_id.decode(), terminate=True)
                 except Exception as e:
                     logger.warning(f"Failed to revoke task: {e}")
+            # Also stop in-memory threading context if present
+            ctx = self.active_scans.get(scan_id)
+            if ctx and ctx.get('mode') == 'threading':
+                ctx['stopped'] = True
+                ctx['status'] = 'stopped'
+                ctx['pause_event'].set()
+                crawler = ctx.get('_crawler')
+                if crawler:
+                    crawler.stopped = True
+                self._emit(scan_id, 'log', '[X] Scan stopped by user', 'error')
+            # Clean up Redis state
+            try:
+                redis.delete(f'scan:{scan_id}:state')
+            except Exception:
+                pass
             if scan_id in self.active_scans:
                 del self.active_scans[scan_id]
             return True
+        # Pure in-memory fallback
         ctx = self.active_scans.get(scan_id)
         if ctx:
             ctx['stopped'] = True
@@ -216,7 +251,23 @@ class ScanManager:
     # ─── Status ──────────────────────────────────────────────────────────
 
     def get_status(self, scan_id):
-        # Threading mode: in-memory context
+        """Get scan status. Priority: Redis hash > in-memory ctx > DB."""
+        redis = self._get_redis()
+        if redis:
+            try:
+                state = redis.hgetall(f'scan:{scan_id}:state')
+                if state:
+                    return {
+                        'status': state.get(b'status', b'unknown').decode(),
+                        'tested_urls': int(state.get(b'tested_urls', b'0')),
+                        'total_urls': int(state.get(b'total_urls', b'0')),
+                        'findings': int(state.get(b'findings', b'0')),
+                        'elapsed': int(time.time() - float(state.get(b'start_time', b'0')))
+                    }
+            except Exception as e:
+                logger.debug(f"Redis get_status failed: {e}")
+
+        # In-memory fallback for threading mode (when no Redis)
         ctx = self.active_scans.get(scan_id)
         if ctx and ctx.get('mode') == 'threading':
             return {
@@ -226,7 +277,7 @@ class ScanManager:
                 'findings': len(ctx['findings']),
                 'elapsed': int(time.time() - ctx['start_time'])
             }
-        # DB fallback (works for both Celery and threading)
+        # DB fallback (always works)
         scan = Scan.get_by_id(scan_id)
         if scan:
             return {
@@ -265,7 +316,16 @@ class ScanManager:
         return self._use_celery and self._get_redis() is not None
 
     def get_event_history(self, scan_id):
-        """Get all previously emitted events for a scan (threading mode only)."""
+        """Get all previously emitted events for a scan.
+        Uses Redis when available, falls back to in-memory."""
+        redis = self._get_redis()
+        if redis:
+            try:
+                events = redis.lrange(f'scan:{scan_id}:event_history', 0, -1)
+                if events:
+                    return [e.decode() for e in events]
+            except Exception as e:
+                logger.debug(f"Redis event history read failed: {e}")
         return list(self.event_history.get(scan_id, []))
 
     def get_redis_client(self):
@@ -275,24 +335,27 @@ class ScanManager:
     # ─── Internal: event emission ────────────────────────────────────────
 
     def _emit(self, scan_id, event_type, data, log_level='info'):
-        """Emit event — Redis pub/sub in Celery mode, in-memory queues otherwise."""
+        """Emit event — always stores in Redis when available, plus in-memory fallback."""
         msg = {
             'type': event_type,
             'data': data,
             'level': log_level,
             'timestamp': datetime.now().strftime('%H:%M:%S')
         }
+        serialized = f"data: {json.dumps(msg)}\n\n"
 
         redis = self._get_redis()
         if redis:
             try:
+                # Publish to live subscribers
                 redis.publish(f'scan:{scan_id}:events', json.dumps(msg))
+                # Store in Redis list for event replay (1h TTL)
+                redis.rpush(f'scan:{scan_id}:event_history', serialized)
+                redis.expire(f'scan:{scan_id}:event_history', 3600)
             except Exception as e:
-                logger.warning(f"Redis publish failed: {e}")
+                logger.warning(f"Redis event emit failed: {e}")
         else:
-            # In-memory queue fallback
-            serialized = f"data: {json.dumps(msg)}\n\n"
-            # Store in event history for late-joining SSE clients
+            # Pure in-memory queue fallback (no Redis at all)
             self.event_history[scan_id].append(serialized)
             if scan_id in self.sse_queues:
                 dead_queues = []
@@ -306,6 +369,14 @@ class ScanManager:
                         self.sse_queues[scan_id].remove(q)
                     except:
                         pass
+
+        # Also push to in-memory queues even in Redis mode (for threading+Redis hybrid)
+        if redis and scan_id in self.sse_queues:
+            for q in self.sse_queues.get(scan_id, []):
+                try:
+                    q.put_nowait(serialized)
+                except queue.Full:
+                    pass
 
         # Persist log events to DB
         if event_type == 'log':
@@ -870,5 +941,15 @@ class ScanManager:
         except Exception:
             pass  # Webhooks are non-critical
 
+        # Clean up Redis state (keep event_history for 1h for late-joining clients)
+        redis = self._get_redis()
+        if redis:
+            try:
+                redis.delete(f'scan:{scan_id}:state')
+                redis.delete(f'scan:{scan_id}:control')
+            except Exception:
+                pass
+
         if scan_id in self.active_scans:
             del self.active_scans[scan_id]
+

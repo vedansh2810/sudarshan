@@ -104,8 +104,8 @@ def dashboard():
             'started_at': started,
         })
 
-    # Trend data (last 7 scans)
-    trend_scans = ScanModel.query.filter_by(user_id=user_id) \
+    # Trend data (last 7 scans) — org-aware
+    trend_scans = Scan.for_user_query(user_id) \
         .order_by(ScanModel.started_at.desc()).limit(7).all()
     trend_labels = []
     trend_critical = []
@@ -152,7 +152,7 @@ def list_scans():
     per_page = request.args.get('per_page', 20, type=int)
     per_page = min(per_page, 100)
 
-    query = ScanModel.query.filter(ScanModel.user_id == user_id)
+    query = Scan.for_user_query(user_id)
     if search:
         query = query.filter(ScanModel.target_url.ilike(f'%{search}%'))
     if date_from:
@@ -216,12 +216,21 @@ def create_scan():
     if not selected_checks:
         selected_checks = Config.VULNERABILITY_CHECKS
 
+    # Org context and quota check
+    org_id = data.get('org_id') or session.get('org_id')
+    if org_id:
+        from app.models.organization import Organization
+        allowed, reason = Organization.check_scan_quota(org_id)
+        if not allowed:
+            return _json_error(reason, 403)
+
     scan_id = Scan.create(
         user_id=session['user_id'],
         target_url=target_url,
         scan_mode=scan_mode,
         scan_speed=scan_speed,
-        crawl_depth=crawl_depth
+        crawl_depth=crawl_depth,
+        org_id=org_id
     )
 
     manager = ScanManager.get_instance()

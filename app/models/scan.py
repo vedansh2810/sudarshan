@@ -72,14 +72,18 @@ class Scan:
 
     @staticmethod
     def get_stats(user_id):
-        total = db.session.query(func.count(ScanModel.id)) \
-            .filter(ScanModel.user_id == user_id).scalar()
+        """Get scan stats for user (includes org-shared scans)."""
+        base_query = Scan.for_user_query(user_id)
+        total = base_query.count()
+
+        # Build a subquery of accessible scan IDs for aggregation
+        accessible_ids = base_query.with_entities(ScanModel.id).subquery()
         vulns = db.session.query(
             func.sum(ScanModel.critical_count),
             func.sum(ScanModel.high_count),
             func.sum(ScanModel.medium_count),
             func.sum(ScanModel.low_count)
-        ).filter(ScanModel.user_id == user_id).first()
+        ).filter(ScanModel.id.in_(db.session.query(accessible_ids.c.id))).first()
 
         total_dict = {'cnt': total or 0}
         vulns_dict = {
@@ -177,3 +181,15 @@ class Scan:
             # Cascade deletes vulnerabilities, crawled_urls, scan_logs
             db.session.delete(scan)
             db.session.commit()
+
+    @staticmethod
+    def delete_by_org(org_id):
+        """Delete all scans belonging to an organization (GDPR tenant purge).
+        Cascading relationships handle vulnerabilities, logs, crawled_urls."""
+        scans = ScanModel.query.filter_by(org_id=org_id).all()
+        count = len(scans)
+        for scan in scans:
+            db.session.delete(scan)
+        if count:
+            db.session.commit()
+        return count

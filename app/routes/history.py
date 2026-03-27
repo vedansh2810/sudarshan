@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, session, redirect, url_for, reques
 from app.models.scan import Scan
 from app.models.database import ScanModel
 from app.utils.auth_utils import login_required
+from app.utils.auth_helpers import user_can_access_scan
 from app import csrf
 from sqlalchemy import func
 import math
@@ -19,8 +20,8 @@ def index():
     page = request.args.get('page', 1, type=int)
     per_page = 20
 
-    # Build query dynamically with SQLAlchemy
-    query = ScanModel.query.filter(ScanModel.user_id == user_id)
+    # Build query dynamically — org-aware via Scan.for_user_query
+    query = Scan.for_user_query(user_id)
 
     if search:
         query = query.filter(ScanModel.target_url.ilike(f'%{search}%'))
@@ -84,7 +85,7 @@ def index():
 @login_required
 def delete(scan_id):
     scan = Scan.get_by_id(scan_id)
-    if scan and scan['user_id'] == session['user_id']:
+    if user_can_access_scan(scan, session.get('user_id')):
         Scan.delete(scan_id)
     return redirect(url_for('history.index'))
 
@@ -94,7 +95,7 @@ def delete(scan_id):
 def api_delete(scan_id):
     """API endpoint for JS-based deletion"""
     scan = Scan.get_by_id(scan_id)
-    if scan and scan['user_id'] == session['user_id']:
+    if user_can_access_scan(scan, session.get('user_id')):
         Scan.delete(scan_id)
         return jsonify({'success': True})
     return jsonify({'success': False}), 404

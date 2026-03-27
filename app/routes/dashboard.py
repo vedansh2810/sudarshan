@@ -13,8 +13,8 @@ def index():
     raw_scans = Scan.get_recent(user_id, limit=10)
     total, vulns = Scan.get_stats(user_id)
 
-    # Trend data for charts (last 7 scans) — via ORM
-    trend_scans_orm = ScanModel.query.filter_by(user_id=user_id) \
+    # Trend data for charts (last 7 scans) — org-aware via Scan.for_user_query
+    trend_scans_orm = Scan.for_user_query(user_id) \
         .order_by(ScanModel.started_at.desc()).limit(7).all()
     trend_scans = []
     for s in trend_scans_orm:

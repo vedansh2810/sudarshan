@@ -97,6 +97,31 @@ class Config:
         'broken_auth',
     ]
 
+    # ── Plan-based resource limits ─────────────────────────────────────
+    PLAN_LIMITS = {
+        'free': {
+            'max_scans_per_month': 5,
+            'max_concurrent_scans': 1,
+            'max_team_members': 3,
+            'max_urls_per_scan': 100,
+            'ai_analysis': False,
+        },
+        'pro': {
+            'max_scans_per_month': 50,
+            'max_concurrent_scans': 3,
+            'max_team_members': 15,
+            'max_urls_per_scan': 500,
+            'ai_analysis': True,
+        },
+        'enterprise': {
+            'max_scans_per_month': -1,  # unlimited
+            'max_concurrent_scans': 10,
+            'max_team_members': -1,  # unlimited
+            'max_urls_per_scan': -1,  # unlimited
+            'ai_analysis': True,
+        },
+    }
+
 class DevelopmentConfig(Config):
     DEBUG = True
     RATELIMIT_STORAGE_URI = 'memory://'

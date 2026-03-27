@@ -19,6 +19,7 @@ class APIKey(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True, index=True)
     name = db.Column(db.String(100), nullable=False)
     key_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     key_prefix = db.Column(db.String(8))  # First 8 chars for identification
@@ -30,8 +31,9 @@ class APIKey(db.Model):
 
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    # Relationship
+    # Relationships
     user = db.relationship('UserModel', backref=db.backref('api_keys', lazy='dynamic'))
+    organization = db.relationship('OrganizationModel', backref=db.backref('api_keys', lazy='dynamic'))
 
     def __repr__(self):
         return f'<APIKey {self.key_prefix}... ({self.name})>'
@@ -56,8 +58,8 @@ class APIKey(db.Model):
         return hashlib.sha256(key.encode()).hexdigest()
 
     @classmethod
-    def create(cls, user_id, name, expires_at=None):
-        """Create a new API key.
+    def create(cls, user_id, name, expires_at=None, org_id=None):
+        """Create a new API key, optionally scoped to an organization.
 
         Returns:
             Tuple (APIKey instance, plaintext_key).
@@ -68,6 +70,7 @@ class APIKey(db.Model):
 
         api_key = cls(
             user_id=user_id,
+            org_id=org_id,
             name=name,
             key_hash=key_hash,
             key_prefix=plaintext_key[:8],
@@ -79,14 +82,14 @@ class APIKey(db.Model):
 
     @classmethod
     def verify(cls, key):
-        """Verify an API key and return the user_id if valid.
+        """Verify an API key and return auth info if valid.
 
         Tries HMAC-SHA256 first, then falls back to legacy SHA-256 for
         backward compatibility. If a legacy key matches, it is re-hashed
         with HMAC-SHA256 (transparent migration).
 
         Returns:
-            user_id (int) or None.
+            dict {'user_id': int, 'org_id': int|None} or None.
         """
         # Try HMAC-SHA256 (new keys)
         key_hash = cls._hash_key(key)
@@ -114,7 +117,7 @@ class APIKey(db.Model):
         api_key.usage_count = (api_key.usage_count or 0) + 1
         db.session.commit()
 
-        return api_key.user_id
+        return {'user_id': api_key.user_id, 'org_id': api_key.org_id}
 
     @classmethod
     def deactivate(cls, key_id, user_id):

@@ -56,12 +56,23 @@ def new_scan():
         if not selected_checks:
             selected_checks = Config.VULNERABILITY_CHECKS
 
+        # Org context and quota check
+        org_id = session.get('org_id')
+        if org_id:
+            from app.models.organization import Organization
+            allowed, reason = Organization.check_scan_quota(org_id)
+            if not allowed:
+                return render_template('scan/new.html',
+                    error=reason,
+                    checks=Config.VULNERABILITY_CHECKS)
+
         scan_id = Scan.create(
             user_id=session['user_id'],
             target_url=target_url,
             scan_mode=scan_mode,
             scan_speed=scan_speed,
-            crawl_depth=crawl_depth
+            crawl_depth=crawl_depth,
+            org_id=org_id
         )
 
         manager = ScanManager.get_instance()
