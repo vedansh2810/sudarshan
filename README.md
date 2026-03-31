@@ -17,7 +17,7 @@
 
 **Sudarshan** is a production-grade web vulnerability scanner that combines traditional security scanning with AI-powered analysis. It features 16 vulnerability scanners, a multi-threaded crawler, real-time progress streaming, and an integrated AI/ML pipeline for intelligent false-positive filtering and detailed attack narratives.
 
-## ✨ Features
+## Features
 
 ### 🔍 Comprehensive Scanning
 - **16 Vulnerability Scanners** — SQL Injection, XSS, CSRF, SSRF, SSTI, XXE, Command Injection, Directory Traversal, JWT Attacks, Broken Auth, IDOR, Open Redirect, CORS Misconfig, Clickjacking, Security Headers, and more
