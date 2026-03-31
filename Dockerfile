@@ -15,10 +15,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create data directories
-RUN mkdir -p data/reports logs
+RUN mkdir -p data/reports data/ml_models logs
 
-# Expose port
-EXPOSE 5000
+# Default port (Render injects PORT env var automatically)
+ENV PORT=5000
+EXPOSE ${PORT}
 
-# Run with gunicorn (2 workers, bind to 0.0.0.0:5000)
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--timeout", "120", "run:app"]
+# Run with gunicorn — uses $PORT so Render can override it
+CMD gunicorn -w 2 -b 0.0.0.0:${PORT} --timeout 120 run:app

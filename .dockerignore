@@ -14,3 +14,11 @@ logs/
 venv/
 .venv/
 node_modules/
+.pytest_cache/
+tests/
+
+# Large doc files (not needed in Docker image)
+*.docx
+*.pptx
+*.doc
+render.yaml
