@@ -2,9 +2,7 @@
 {% block page_title %}Dashboard{% endblock %}
 {% block title %}Dashboard{% endblock %}
 
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-{% endblock %}
+
 
 {% block content %}
 <div class="space-y-8 animate-fade-in-up">
@@ -135,7 +133,14 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-center text-slate-500 py-12">No scans yet. Start your first scan!</td></tr>
+          <tr><td colspan="6" class="text-center py-16">
+            <span class="material-symbols-outlined text-5xl text-slate-600 block mb-3">radar</span>
+            <p class="text-slate-400 font-semibold text-lg mb-1">No scans yet</p>
+            <p class="text-sm text-slate-500 mb-4">Launch your first vulnerability scan to get started.</p>
+            <a href="/scan/new" class="inline-flex items-center gap-2 bg-primary/10 border border-primary/30 text-primary px-5 py-2 rounded-lg font-semibold text-sm hover:bg-primary/20 transition-colors">
+              <span class="material-symbols-outlined text-lg">add</span> Start First Scan
+            </a>
+          </td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -145,6 +150,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
   const trendData = {{ trend_data | tojson }};
   const stats = {{ stats | tojson }};

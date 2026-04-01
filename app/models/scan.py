@@ -96,18 +96,19 @@ class Scan:
 
     @staticmethod
     def update_status(scan_id, status):
-        scan = db.session.get(ScanModel, scan_id)
-        if scan:
-            scan.status = status
-            db.session.commit()
+        """Update scan status using direct UPDATE (no ORM load overhead)."""
+        db.session.query(ScanModel).filter_by(id=scan_id).update(
+            {'status': status}
+        )
+        db.session.commit()
 
     @staticmethod
     def update_progress(scan_id, tested_urls, vuln_count):
-        scan = db.session.get(ScanModel, scan_id)
-        if scan:
-            scan.tested_urls = tested_urls
-            scan.vuln_count = vuln_count
-            db.session.commit()
+        """Update progress counters using direct UPDATE (no ORM load overhead)."""
+        db.session.query(ScanModel).filter_by(id=scan_id).update(
+            {'tested_urls': tested_urls, 'vuln_count': vuln_count}
+        )
+        db.session.commit()
 
     @staticmethod
     def complete(scan_id, score, duration, total_urls, critical, high, medium, low):
@@ -138,12 +139,31 @@ class Scan:
         db.session.commit()
 
     @staticmethod
+    def add_logs_batch(scan_id, messages):
+        """Batch-insert multiple log entries with a single commit.
+        
+        Args:
+            scan_id: The scan ID.
+            messages: List of (message, log_type) tuples or plain strings.
+        """
+        if not messages:
+            return
+        logs = []
+        for msg in messages:
+            if isinstance(msg, tuple):
+                logs.append(ScanLogModel(scan_id=scan_id, message=msg[0], log_type=msg[1]))
+            else:
+                logs.append(ScanLogModel(scan_id=scan_id, message=str(msg), log_type='info'))
+        db.session.add_all(logs)
+        db.session.commit()
+
+    @staticmethod
     def update_total_urls(scan_id, total_urls):
-        """Update only the total_urls count (used during crawling phase)."""
-        scan = db.session.get(ScanModel, scan_id)
-        if scan:
-            scan.total_urls = total_urls
-            db.session.commit()
+        """Update only the total_urls count using direct UPDATE."""
+        db.session.query(ScanModel).filter_by(id=scan_id).update(
+            {'total_urls': total_urls}
+        )
+        db.session.commit()
 
     @staticmethod
     def recover_orphaned(max_age_minutes=10):

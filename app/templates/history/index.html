@@ -102,7 +102,11 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center text-slate-500 py-12">No scans found.</td></tr>
+          <tr><td colspan="9" class="text-center py-16">
+            <span class="material-symbols-outlined text-5xl text-slate-600 block mb-3">search_off</span>
+            <p class="text-slate-400 font-semibold text-lg mb-1">No scans found</p>
+            <p class="text-sm text-slate-500">Try adjusting your filters or start a new scan.</p>
+          </td></tr>
           {% endfor %}
         </tbody>
       </table>

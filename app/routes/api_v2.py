@@ -1,4 +1,4 @@
-"""REST API v2 — JSON endpoints for the React SPA frontend.
+"""REST API v2 — JSON endpoints for programmatic access and integrations.
 
 All endpoints return JSON. Auth is via Flask session (set by /auth/callback).
 Prefix: /api/v2

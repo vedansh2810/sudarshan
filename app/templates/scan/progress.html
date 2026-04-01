@@ -89,6 +89,8 @@
   const logViewer = document.getElementById('log-viewer');
   let firstLog = true;
   let currentStatus = '{{ scan.status }}';
+  let sseConnected = false;
+  let pollTimer = null;
 
   function updateProgress(total, tested) {
     const pct = total > 0 ? Math.round((tested / total) * 100) : 0;
@@ -119,15 +121,34 @@
     if (done) {
       document.getElementById('results-btn').classList.remove('hidden');
       document.getElementById('scan-controls').style.display = 'none';
+      stopPolling();
     }
   }
 
+  // Batch log appends using DocumentFragment to reduce DOM thrashing
+  let logBuffer = [];
+  let logFlushTimer = null;
+
   function addLog(msg, level, ts) {
     if (firstLog) { logViewer.innerHTML = ''; firstLog = false; }
-    const div = document.createElement('div');
-    div.className = 'py-0.5 ' + (level === 'error' ? 'text-red-400' : level === 'warning' ? 'text-amber-400' : level === 'success' ? 'text-emerald-400' : 'text-slate-400');
-    div.innerHTML = '<span class="text-slate-600 mr-2">[' + (ts || '—') + ']</span>' + msg;
-    logViewer.appendChild(div);
+    logBuffer.push({ msg, level, ts });
+    if (!logFlushTimer) {
+      logFlushTimer = setTimeout(flushLogs, 100);
+    }
+  }
+
+  function flushLogs() {
+    logFlushTimer = null;
+    if (!logBuffer.length) return;
+    const frag = document.createDocumentFragment();
+    for (const { msg, level, ts } of logBuffer) {
+      const div = document.createElement('div');
+      div.className = 'py-0.5 ' + (level === 'error' ? 'text-red-400' : level === 'warning' ? 'text-amber-400' : level === 'success' ? 'text-emerald-400' : 'text-slate-400');
+      div.innerHTML = '<span class="text-slate-600 mr-2">[' + (ts || '—') + ']</span>' + msg;
+      frag.appendChild(div);
+    }
+    logBuffer = [];
+    logViewer.appendChild(frag);
     logViewer.scrollTop = logViewer.scrollHeight;
   }
 
@@ -169,7 +190,6 @@
       const res = await fetch('/scan/' + scanId + '/' + action, { method: 'POST' });
       const data = await res.json();
       if (!data.success) {
-        // Revert on failure — re-poll the real status
         const stRes = await fetch('/scan/' + scanId + '/status');
         if (stRes.ok) {
           const st = await stRes.json();
@@ -177,7 +197,6 @@
         }
       }
     } catch (err) {
-      // Network error — poll the real status to recover
       try {
         const stRes = await fetch('/scan/' + scanId + '/status');
         if (stRes.ok) {
@@ -188,41 +207,51 @@
     }
   }
 
-  // SSE Stream
-  const evtSrc = new EventSource('/scan/' + scanId + '/stream');
-  evtSrc.onmessage = function(e) {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'log') {
-        addLog(msg.data, msg.level, msg.timestamp);
-      } else if (msg.type === 'finding') {
-        addFinding(msg.data);
-      } else if (msg.type === 'progress') {
-        const d = msg.data;
-        document.getElementById('stat-phase').textContent = d.phase || 'scanning';
-        document.getElementById('stat-total').textContent = d.total || 0;
-        document.getElementById('stat-tested').textContent = d.tested || 0;
-        document.getElementById('stat-findings').textContent = d.findings || 0;
-        updateProgress(d.total || 0, d.tested || 0);
-      } else if (msg.type === 'complete') {
-        setStatus('completed');
-        addLog('Scan completed! Score: ' + (msg.data.score || 'N/A'), 'success', '');
-        evtSrc.close();
-      }
-    } catch(err) {}
-  };
+  // SSE Stream — primary update mechanism
+  function connectSSE() {
+    const evtSrc = new EventSource('/scan/' + scanId + '/stream');
 
-  // Client-side elapsed timer
-  const scanStart = Date.now();
-  setInterval(() => {
-      const el = document.getElementById('stat-elapsed');
-      if (el && !['completed','stopped','error'].includes(currentStatus)) {
-        el.textContent = Math.round((Date.now() - scanStart) / 1000) + 's';
-      }
-  }, 1000);
+    evtSrc.onopen = function() {
+      sseConnected = true;
+      stopPolling(); // SSE is working, no need to poll
+    };
 
-  // Poll status as backup
-  setInterval(async () => {
+    evtSrc.onmessage = function(e) {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'log') {
+          addLog(msg.data, msg.level, msg.timestamp);
+        } else if (msg.type === 'finding') {
+          addFinding(msg.data);
+        } else if (msg.type === 'progress') {
+          const d = msg.data;
+          document.getElementById('stat-phase').textContent = d.phase || 'scanning';
+          document.getElementById('stat-total').textContent = d.total || 0;
+          document.getElementById('stat-tested').textContent = d.tested || 0;
+          document.getElementById('stat-findings').textContent = d.findings || 0;
+          updateProgress(d.total || 0, d.tested || 0);
+        } else if (msg.type === 'complete') {
+          setStatus('completed');
+          addLog('Scan completed! Score: ' + (msg.data.score || 'N/A'), 'success', '');
+          evtSrc.close();
+        }
+      } catch(err) {}
+    };
+
+    evtSrc.onerror = function() {
+      sseConnected = false;
+      evtSrc.close();
+      // SSE disconnected — fall back to polling
+      if (!['completed','stopped','error'].includes(currentStatus)) {
+        startPolling();
+        // Try reconnecting SSE after 5s
+        setTimeout(connectSSE, 5000);
+      }
+    };
+  }
+
+  // Fallback polling — only activates when SSE disconnects
+  async function pollStatus() {
     try {
       const res = await fetch('/scan/' + scanId + '/status');
       if (!res.ok) return;
@@ -233,6 +262,28 @@
       document.getElementById('stat-findings').textContent = st.findings || 0;
       updateProgress(st.total_urls || 0, st.tested_urls || 0);
     } catch(e) {}
-  }, 3000);
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollStatus, 10000); // 10s fallback interval
+    pollStatus(); // Immediate first poll
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  // Client-side elapsed timer
+  const scanStart = Date.now();
+  setInterval(() => {
+      const el = document.getElementById('stat-elapsed');
+      if (el && !['completed','stopped','error'].includes(currentStatus)) {
+        el.textContent = Math.round((Date.now() - scanStart) / 1000) + 's';
+      }
+  }, 1000);
+
+  // Start SSE connection (polling is only used as fallback)
+  connectSSE();
 </script>
 {% endblock %}

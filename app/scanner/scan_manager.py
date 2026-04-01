@@ -457,13 +457,18 @@ class ScanManager:
             # Phase 1: Crawling
             self._emit(scan_id, 'log', '[+] Phase 1: Crawling target...', 'info')
 
+            _crawl_counter = [0]  # mutable counter for closure
+
             def crawl_callback(url, count):
                 if ctx['stopped']:
                     return
                 ctx['pause_event'].wait()
                 ctx['total_urls'] = count
-                Scan.update_progress(scan_id, ctx['tested_urls'], len(ctx['findings']))
-                Scan.update_total_urls(scan_id, count)
+                _crawl_counter[0] += 1
+                # Throttle DB writes: update every 5th URL instead of every URL
+                if _crawl_counter[0] % 5 == 0 or count <= 5:
+                    Scan.update_progress(scan_id, ctx['tested_urls'], len(ctx['findings']))
+                    Scan.update_total_urls(scan_id, count)
                 self._emit(scan_id, 'log', f'[+] Crawling: {url[:70]}', 'info')
                 self._emit(scan_id, 'progress', {
                     'phase': 'crawling',
@@ -672,116 +677,15 @@ class ScanManager:
                             self._emit(scan_id, 'log', f'[-] Error in {display_name}: {error[:80]}', 'warning')
                             continue
 
+                        # Collect deduplicated findings for batch insert
+                        batch_findings = []
                         for finding in findings:
-                            # Deduplicate: same vuln_type + URL + param = skip
                             dedup_key = (finding['vuln_type'], finding['affected_url'], finding['parameter'])
                             if dedup_key in seen_vulns:
                                 continue
                             seen_vulns.add(dedup_key)
-
                             ctx['findings'].append(finding)
-                            Vulnerability.create(
-                                scan_id=scan_id,
-                                vuln_type=finding['vuln_type'],
-                                name=finding['name'],
-                                description=finding['description'],
-                                impact=finding['impact'],
-                                severity=finding['severity'],
-                                cvss_score=finding['cvss_score'],
-                                owasp_category=finding['owasp_category'],
-                                affected_url=finding['affected_url'],
-                                parameter=finding['parameter'],
-                                payload=finding['payload'],
-                                request_data=finding['request_data'],
-                                response_data=finding['response_data'],
-                                remediation=finding['remediation']
-                            )
-
-                            # AI analysis (non-blocking, best-effort)
-                            if current_app.config.get('AI_ANALYSIS_ENABLED', True):
-                                try:
-                                    # Use SmartEngine for enriched analysis
-                                    from app.ai.smart_engine import get_smart_engine
-                                    _engine = get_smart_engine()
-
-                                    vuln_info = {
-                                        'vuln_type': finding['vuln_type'],
-                                        'severity': finding['severity'],
-                                        'url': finding['affected_url'],
-                                        'parameter': finding['parameter'],
-                                        'payload': finding['payload'],
-                                        'evidence': finding.get('description', ''),
-                                    }
-
-                                    # Step 1: Standard LLM analysis
-                                    ai_result = ai_analyze(vuln_info)
-
-                                    # Enrich remediation with PortSwigger lab references
-                                    if finding.get('remediation'):
-                                        finding['remediation'] = _engine.enrich_remediation(
-                                            finding['vuln_type'], finding['remediation']
-                                        )
-
-                                    import json as _json
-                                    from app.models.database import db as _db, VulnerabilityModel
-                                    # Update the most recently created vuln
-                                    latest = VulnerabilityModel.query.filter_by(
-                                        scan_id=scan_id,
-                                        vuln_type=finding['vuln_type'],
-                                        affected_url=finding['affected_url']
-                                    ).order_by(VulnerabilityModel.id.desc()).first()
-
-                                    if latest:
-                                        if ai_result:
-                                            latest.ai_analysis = _json.dumps(ai_result)
-                                        if finding.get('remediation'):
-                                            latest.remediation = finding['remediation']
-
-                                        # Step 2: ML + LLM false-positive verification
-                                        try:
-                                            fp_features = {
-                                                'payload_length': len(finding.get('payload', '') or ''),
-                                                'payload_special_chars': sum(1 for c in (finding.get('payload', '') or '') if c in "'\"<>;&|`$(){}[]\\"),
-                                                'payload_has_script_tag': 1 if '<script' in (finding.get('payload', '') or '').lower() else 0,
-                                                'payload_has_sql_keyword': 1 if any(kw in (finding.get('payload', '') or '').upper() for kw in ('SELECT', 'UNION', 'DROP', 'SLEEP')) else 0,
-                                                'payload_has_encoding': 1 if '%' in (finding.get('payload', '') or '') else 0,
-                                                'baseline_status': 200,
-                                                'baseline_length': 0,
-                                                'test_status': 200,
-                                                'test_length': 0,
-                                                'response_time': 0,
-                                                'status_changed': 0,
-                                                'length_diff': 0,
-                                                'length_ratio': 0,
-                                                'error_count': 0,
-                                                'has_db_error': 0,
-                                                'payload_reflected': 0,
-                                            }
-                                            verdict, confidence, reasoning = _engine.verify_finding(
-                                                vuln_info, fp_features
-                                            )
-                                            if verdict == 'false_positive':
-                                                latest.likely_false_positive = True
-                                                latest.fp_confidence = confidence
-                                                self._emit(scan_id, 'log',
-                                                    f'[*] AI: {finding["name"]} marked as likely false positive ({confidence:.0%})',
-                                                    'info')
-                                            elif verdict == 'needs_manual_review':
-                                                latest.fp_confidence = confidence
-                                        except Exception as fp_err:
-                                            logger.debug(f"FP verification skipped: {fp_err}")
-
-                                        # Step 3: Attack narrative generation
-                                        try:
-                                            narrative = _engine.generate_attack_narrative(vuln_info)
-                                            if narrative:
-                                                latest.ai_narrative = _json.dumps(narrative)
-                                        except Exception as narr_err:
-                                            logger.debug(f"Attack narrative skipped: {narr_err}")
-
-                                        _db.session.commit()
-                                except Exception as ai_err:
-                                    logger.debug(f"AI analysis skipped: {ai_err}")
+                            batch_findings.append(finding)
 
                             track_vulnerability(finding['severity'], finding.get('vuln_type', 'unknown'))
                             sev = finding['severity'].upper()
@@ -793,6 +697,10 @@ class ScanManager:
                                 'severity': finding['severity'],
                                 'url': finding['affected_url']
                             }, 'error')
+
+                        # Batch-insert all findings from this scanner (1 commit instead of N)
+                        if batch_findings:
+                            Vulnerability.create_batch(scan_id, batch_findings)
 
                         if not findings:
                             self._emit(scan_id, 'log', f'[+] {display_name}: No issues found', 'success')
@@ -815,69 +723,111 @@ class ScanManager:
                 findings = scanner.scan(target_url, [])
                 for finding in findings:
                     ctx['findings'].append(finding)
-                    Vulnerability.create(
-                        scan_id=scan_id,
-                        vuln_type=finding['vuln_type'],
-                        name=finding['name'],
-                        description=finding['description'],
-                        impact=finding['impact'],
-                        severity=finding['severity'],
-                        cvss_score=finding['cvss_score'],
-                        owasp_category=finding['owasp_category'],
-                        affected_url=finding['affected_url'],
-                        parameter=finding['parameter'],
-                        payload=finding['payload'],
-                        request_data=finding['request_data'],
-                        response_data=finding['response_data'],
-                        remediation=finding['remediation']
-                    )
+                # Batch-insert all passive findings in one commit
+                if findings:
+                    Vulnerability.create_batch(scan_id, findings)
 
-            # Phase 3: Post-scan AI Deep Analysis
+            # Phase 3: Post-scan AI Analysis (batched — decoupled from scan loop)
             if ctx['findings'] and not ctx.get('stopped'):
                 try:
                     from app.ai.smart_engine import get_smart_engine
                     _engine = get_smart_engine()
-                    self._emit(scan_id, 'log', '[*] Phase 3: AI deep analysis of findings...', 'info')
+                    self._emit(scan_id, 'log', '[*] Phase 3: AI analysis of findings...', 'info')
 
-                    # Generate attack narratives for critical/high findings
                     import json as _json
                     from app.models.database import db as _db, VulnerabilityModel
 
-                    high_prio = [
-                        f for f in ctx['findings']
-                        if f.get('severity') in ('critical', 'high')
-                    ]
-                    narratives_generated = 0
-                    for finding in high_prio[:5]:  # Cap at 5 to avoid slowdown
+                    ai_updates = 0
+                    for finding in ctx['findings']:
+                        if ctx.get('stopped'):
+                            break
                         try:
-                            narrative = _engine.generate_attack_narrative(finding)
-                            if narrative:
-                                latest = VulnerabilityModel.query.filter_by(
-                                    scan_id=scan_id,
-                                    vuln_type=finding['vuln_type'],
-                                    affected_url=finding['affected_url']
-                                ).order_by(VulnerabilityModel.id.desc()).first()
-                                if latest:
-                                    # Merge narrative into existing ai_analysis
-                                    existing = {}
-                                    if latest.ai_analysis:
-                                        try:
-                                            existing = _json.loads(latest.ai_analysis)
-                                        except Exception:
-                                            pass
-                                    existing['attack_narrative'] = narrative
-                                    latest.ai_analysis = _json.dumps(existing)
-                                    _db.session.commit()
-                                    narratives_generated += 1
+                            vuln_info = {
+                                'vuln_type': finding['vuln_type'],
+                                'severity': finding['severity'],
+                                'url': finding['affected_url'],
+                                'parameter': finding['parameter'],
+                                'payload': finding['payload'],
+                                'evidence': finding.get('description', ''),
+                            }
+
+                            latest = VulnerabilityModel.query.filter_by(
+                                scan_id=scan_id,
+                                vuln_type=finding['vuln_type'],
+                                affected_url=finding['affected_url']
+                            ).order_by(VulnerabilityModel.id.desc()).first()
+
+                            if not latest:
+                                continue
+
+                            # Step 1: LLM analysis + remediation enrichment
+                            try:
+                                ai_result = ai_analyze(vuln_info)
+                                if ai_result:
+                                    latest.ai_analysis = _json.dumps(ai_result)
+                            except Exception:
+                                pass
+
+                            try:
+                                if finding.get('remediation'):
+                                    enriched = _engine.enrich_remediation(
+                                        finding['vuln_type'], finding['remediation']
+                                    )
+                                    if enriched:
+                                        latest.remediation = enriched
+                            except Exception:
+                                pass
+
+                            # Step 2: ML false-positive verification
+                            try:
+                                fp_features = {
+                                    'payload_length': len(finding.get('payload', '') or ''),
+                                    'payload_special_chars': sum(1 for c in (finding.get('payload', '') or '') if c in "'\"<>;&|`$(){}[]\\"),
+                                    'payload_has_script_tag': 1 if '<script' in (finding.get('payload', '') or '').lower() else 0,
+                                    'payload_has_sql_keyword': 1 if any(kw in (finding.get('payload', '') or '').upper() for kw in ('SELECT', 'UNION', 'DROP', 'SLEEP')) else 0,
+                                    'payload_has_encoding': 1 if '%' in (finding.get('payload', '') or '') else 0,
+                                    'baseline_status': 200, 'baseline_length': 0,
+                                    'test_status': 200, 'test_length': 0,
+                                    'response_time': 0, 'status_changed': 0,
+                                    'length_diff': 0, 'length_ratio': 0,
+                                    'error_count': 0, 'has_db_error': 0,
+                                    'payload_reflected': 0,
+                                }
+                                verdict, confidence, reasoning = _engine.verify_finding(
+                                    vuln_info, fp_features
+                                )
+                                if verdict == 'false_positive':
+                                    latest.likely_false_positive = True
+                                    latest.fp_confidence = confidence
+                                    self._emit(scan_id, 'log',
+                                        f'[*] AI: {finding["name"]} marked as likely false positive ({confidence:.0%})',
+                                        'info')
+                                elif verdict == 'needs_manual_review':
+                                    latest.fp_confidence = confidence
+                            except Exception:
+                                pass
+
+                            # Step 3: Attack narrative (critical/high only)
+                            if finding.get('severity') in ('critical', 'high'):
+                                try:
+                                    narrative = _engine.generate_attack_narrative(vuln_info)
+                                    if narrative:
+                                        latest.ai_narrative = _json.dumps(narrative)
+                                except Exception:
+                                    pass
+
+                            ai_updates += 1
                         except Exception:
                             pass
 
-                    if narratives_generated:
+                    # Single batch commit for all AI updates
+                    if ai_updates:
+                        _db.session.commit()
                         self._emit(scan_id, 'log',
-                            f'[+] AI deep analysis: Generated {narratives_generated} attack narratives',
+                            f'[+] AI analysis complete: {ai_updates} findings enriched',
                             'success')
                 except Exception as deep_err:
-                    logger.debug(f'Post-scan deep analysis skipped: {deep_err}')
+                    logger.debug(f'Post-scan AI analysis skipped: {deep_err}')
 
             self._finalize(ctx, discovered_urls)
 

@@ -13,14 +13,14 @@
         </div>
         <span class="text-white text-lg font-extrabold tracking-tight">SUDARSHAN</span>
       </div>
-      <nav class="hidden md:flex items-center gap-8">
-        <a href="#features" class="text-sm text-slate-400 hover:text-white transition-colors font-medium">Features</a>
-        <a href="#how-it-works" class="text-sm text-slate-400 hover:text-white transition-colors font-medium">How It Works</a>
-        <a href="#stats" class="text-sm text-slate-400 hover:text-white transition-colors font-medium">Stats</a>
+      <nav class="hidden md:flex items-center gap-6">
+        <a href="#features" class="nav-link text-sm text-slate-400 font-medium">Features</a>
+        <a href="#how-it-works" class="nav-link text-sm text-slate-400 font-medium">How It Works</a>
+        <a href="#stats" class="nav-link text-sm text-slate-400 font-medium">Stats</a>
       </nav>
       <div class="flex items-center gap-4">
-        <a href="/login" class="text-sm text-slate-300 hover:text-white transition-colors font-semibold">Sign In</a>
-        <a href="/login" class="bg-primary text-[#060611] px-5 py-2 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all">Get Started</a>
+        <a href="/login" class="nav-signin text-sm text-slate-300 font-semibold">Sign In</a>
+        <a href="/login" class="nav-cta bg-primary text-[#060611] px-5 py-2 rounded-lg text-sm font-bold">Get Started</a>
       </div>
     </div>
   </header>
@@ -53,28 +53,59 @@
       </div>
       <!-- Dashboard Preview -->
       <div class="hidden lg:block animate-fade-in-up" style="animation-delay:0.3s">
-        <div class="glass-card rounded-2xl p-6 transform rotate-1 hover:rotate-0 transition-transform duration-500">
+        <div class="glass-card rounded-2xl p-5 transform rotate-1 hover:rotate-0 transition-transform duration-500 neon-glow">
           <div class="flex items-center gap-2 mb-4">
-            <div class="w-3 h-3 rounded-full bg-red-500/60"></div>
-            <div class="w-3 h-3 rounded-full bg-amber-500/60"></div>
-            <div class="w-3 h-3 rounded-full bg-emerald-500/60"></div>
-            <span class="ml-2 text-[10px] font-mono text-slate-600">sudarshan://dashboard</span>
+            <div class="w-2.5 h-2.5 rounded-full bg-red-500/60"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-amber-500/60"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-emerald-500/60"></div>
+            <span class="ml-2 text-[10px] font-mono text-slate-600">sudarshan://sentinel-command</span>
           </div>
-          <div class="grid grid-cols-5 gap-2 mb-4">
-            <div class="h-12 rounded bg-primary/15 border border-primary/10"></div>
-            <div class="h-12 rounded bg-red-500/15 border border-red-500/10"></div>
-            <div class="h-12 rounded bg-amber-500/15 border border-amber-500/10"></div>
-            <div class="h-12 rounded bg-emerald-500/15 border border-emerald-500/10"></div>
-            <div class="h-12 rounded bg-accent-purple/15 border border-accent-purple/10"></div>
-          </div>
-          <div class="grid grid-cols-2 gap-4 mb-4">
-            <div class="glass-card rounded-xl p-4 h-44">
-              <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-3">ACTIVE THREATS</p>
-              <p class="text-3xl font-black text-red-500 font-mono">0</p>
+          <!-- Stat Row -->
+          <div class="grid grid-cols-4 gap-2 mb-3">
+            <div class="rounded-lg bg-white/[0.03] border border-white/5 p-3">
+              <p class="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Total Scans</p>
+              <p class="text-xl font-black text-white font-mono mt-1">1,420</p>
+              <p class="text-[8px] text-emerald-500 font-mono">+26% ↑</p>
             </div>
-            <div class="glass-card rounded-xl p-4 h-44">
-              <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-3">SECURITY SCORE</p>
-              <p class="text-3xl font-black text-emerald-500 font-mono">A+</p>
+            <div class="rounded-lg bg-red-500/5 border border-red-500/10 p-3">
+              <p class="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Critical</p>
+              <p class="text-xl font-black text-red-500 font-mono mt-1">12</p>
+              <p class="text-[8px] text-red-400 font-mono">action needed</p>
+            </div>
+            <div class="rounded-lg bg-amber-500/5 border border-amber-500/10 p-3">
+              <p class="text-[8px] text-slate-500 uppercase tracking-wider font-bold">High/Med</p>
+              <p class="text-xl font-black text-amber-500 font-mono mt-1">84</p>
+              <p class="text-[8px] text-amber-400 font-mono">in review</p>
+            </div>
+            <div class="rounded-lg bg-emerald-500/5 border border-emerald-500/10 p-3">
+              <p class="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Score</p>
+              <p class="text-xl font-black text-emerald-500 font-mono mt-1">A+</p>
+              <p class="text-[8px] text-emerald-400 font-mono">excellent</p>
+            </div>
+          </div>
+          <!-- Chart + Terminal -->
+          <div class="grid grid-cols-5 gap-3">
+            <div class="col-span-3 rounded-lg bg-[#030308] border border-white/5 p-3">
+              <p class="text-[8px] text-slate-500 uppercase tracking-wider font-bold mb-2">Vulnerability Trends</p>
+              <div class="flex items-end gap-1 h-20">
+                <div class="flex-1 bg-primary/20 rounded-t" style="height:40%"></div>
+                <div class="flex-1 bg-primary/30 rounded-t" style="height:65%"></div>
+                <div class="flex-1 bg-primary/40 rounded-t" style="height:55%"></div>
+                <div class="flex-1 bg-primary/50 rounded-t" style="height:80%"></div>
+                <div class="flex-1 bg-primary/30 rounded-t" style="height:45%"></div>
+                <div class="flex-1 bg-primary/40 rounded-t" style="height:70%"></div>
+                <div class="flex-1 bg-primary/60 rounded-t" style="height:90%"></div>
+                <div class="flex-1 bg-primary/35 rounded-t" style="height:50%"></div>
+              </div>
+            </div>
+            <div class="col-span-2 rounded-lg bg-[#030308] border border-white/5 p-3 font-mono text-[9px] leading-relaxed overflow-hidden">
+              <p class="text-[8px] text-slate-500 uppercase tracking-wider font-bold mb-2">Live Feed</p>
+              <p class="text-emerald-500">[OK] Headers scan complete</p>
+              <p class="text-primary">[..] Testing /api/users</p>
+              <p class="text-amber-500">[!] XSS found: /search</p>
+              <p class="text-slate-500">[OK] CSRF tokens valid</p>
+              <p class="text-red-500">[!!] SQLi: /login?id=</p>
+              <p class="text-primary">[..] Crawling depth 3</p>
             </div>
           </div>
         </div>
@@ -85,7 +116,7 @@
   <!-- Stats -->
   <section id="stats" class="border-y border-white/5 bg-bg-secondary/50 py-10 px-6">
     <div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-      {% for stat in [('13+', 'VULNERABILITY CHECKS'), ('Real-Time', 'SCANNING SPEED'), ('ML-Powered', 'SECURITY ANALYSIS'), ('99.9%', 'PLATFORM UPTIME')] %}
+      {% for stat in [('16+', 'VULNERABILITY CHECKS'), ('Real-Time', 'SCANNING SPEED'), ('ML-Powered', 'SECURITY ANALYSIS'), ('99.9%', 'PLATFORM UPTIME')] %}
       <div>
         <p class="text-2xl md:text-3xl font-black text-white font-display">{{ stat[0] }}</p>
         <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">{{ stat[1] }}</p>
@@ -101,7 +132,7 @@
       <p class="text-slate-500 text-center mt-4 max-w-xl mx-auto">Our AI-driven engine provides enterprise-grade protection for modern digital assets.</p>
       <div class="grid md:grid-cols-2 gap-6 mt-16">
         {% for f in [
-          ('security', 'Deep Vulnerability Scanning', '13 active checks including SQL Injection, XSS, CSRF, SSRF, XXE, Command Injection, and more.'),
+          ('security', 'Deep Vulnerability Scanning', '16 active checks including SQL Injection, XSS, CSRF, SSRF, XXE, Command Injection, and more.'),
           ('monitoring', 'Real-Time Monitoring', 'Live SSE streaming with pause/resume controls. Watch vulnerabilities discovered in real-time.'),
           ('psychology', 'AI False Positive Reduction', 'ML ensemble classifier with RandomForest + GradientBoosting for accurate threat detection.'),
           ('description', 'Professional Reports', 'Export detailed security findings in PDF and HTML formats, ready for compliance reviews.')
@@ -152,7 +183,7 @@
 
   <!-- Footer -->
   <footer class="border-t border-white/5 py-12 px-6 lg:px-12">
-    <div class="max-w-6xl mx-auto grid md:grid-cols-3 gap-8">
+    <div class="max-w-6xl mx-auto grid md:grid-cols-2 gap-8">
       <div>
         <div class="flex items-center gap-2 mb-4">
           <span class="material-symbols-outlined text-primary" style="font-variation-settings:'FILL' 1">security</span>
@@ -164,13 +195,9 @@
         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Product</h4>
         <div class="space-y-2"><a href="#features" class="block text-sm text-slate-500 hover:text-white transition-colors">Features</a><a href="#how-it-works" class="block text-sm text-slate-500 hover:text-white transition-colors">How It Works</a><a href="/dashboard" class="block text-sm text-slate-500 hover:text-white transition-colors">Dashboard</a></div>
       </div>
-      <div>
-        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Resources</h4>
-        <div class="space-y-2"><a href="#" class="block text-sm text-slate-500 hover:text-white transition-colors">Documentation</a><a href="#" class="block text-sm text-slate-500 hover:text-white transition-colors">API Reference</a><a href="#" class="block text-sm text-slate-500 hover:text-white transition-colors">Security</a></div>
-      </div>
     </div>
     <div class="max-w-6xl mx-auto mt-10 pt-6 border-t border-white/5 text-center">
-      <p class="text-xs text-slate-600 uppercase tracking-widest font-bold">&copy; 2025 SUDARSHAN. ALL RIGHTS RESERVED.</p>
+      <p class="text-xs text-slate-600 uppercase tracking-widest font-bold">&copy; 2026 SUDARSHAN. ALL RIGHTS RESERVED.</p>
     </div>
   </footer>
 </div>

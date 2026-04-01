@@ -1,0 +1,319 @@
+FORMAT OF
+Major Project Report
+
+1. Paper Size : A- 4 size bond paper
+
+2. Margins :
+Top : 1" (1 inch=2.54cm) Bottom : 1.15" (2.86cm) Left : 1.5"
+Right : 0.6"
+
+3. Line Spacing: 1.5 line
+
+4. Title of Chapter
+
+Font : Times New Roman ( Bold face)
+Size : 18 point
+Alignment : Centre Alignment
+One thick line (21/4 point weight) after the name of chapter
+
+5. Headings
+First Order Heading: (for example - 1. INTRODUCTION)
+Font : Times New Roman (Bold Face)
+Size : 16 point
+One blank line before the heading (12 points)
+
+Second Order Heading: (for example - 1.1. Evolution)
+Font : Times New Roman ( Bold Face)
+Size : 14 point
+One blank line before the heading (12 points)
+
+Third Order Heading: (for example - 1.1.1. Image Processing) Font : Times New Roman (Bold Face)
+Size : 12 point
+
+One blank line before the heading (12 points)
+6. Text
+Font : Times New Roman
+Size : 12 point
+Line Indent : First line of every paragraph should be indented By 1 cm. (Except first paragraph *)
+
+* No indent should be applied to first line of first paragraph under any Heading / Sub-Heading
+
+Alignment : Justified (Full Text)
+Line Spacing: 1.5.
+
+
+
+7. Abstract ( up to 200 words)
+
+Heading (i.e. ABSTRACT)
+Font : Times New Roman (Bold Face) Size : 12 point
+Two blank lines after the heading. (12 points)
+Remaining Text
+Font : Times New Roman ( Italic Face )
+Size : 12 point
+Alignment : Justified (Full Text)
+
+8. Figures and Tables : Centered Placed
+Caption
+Font : Garamond (Bold) Size : 10 point Alignment : Centered
+Figure Caption must be below the figure and centered, Table caption must be above the table and centered.
+
+
+9. Page Numbering (Centered)
+Till page, "FIGURE INDEX" : Roman (I, II, etc.)
+For Remaining Pages
+(i.e. from ABSTRACT -to- BIBLIOGRAPHY) : 1, 2, ...... N
+
+10. References / Bibliography
+Line Spacing : 1.5 Line Font : Times New Roman Size : 12 point
+Publication details and/or URL must be in Italics. Format:
+[Citation number] Author's Name, "Article Title", Journal, Publisher, Location, Year, Edition/Reprint, PP Page No Start-End.
+[Citation number] Author's Name, "Article Title", Complete URL of
+Web Page.
+[Citation number] Author's Name, "Title of the Book", Publication, Edition, Year of Printing.
+
+11. Header: Title- Information Security, Name Font -Right hand - Times New Roman Size - 12 point
+No header should be applied to cover page, front page, index, abstract, bibliography.
+
+Footer : Title-left hand- Major Project/Mini Project/Seminar  title Right hand-page no (only integer)
+Font - Times New Roman Size - 12 point
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FACULTY OF COMPUTER SCIENCE & ENGINEERING DEPARTMENT OF COMPUTER APPLICATION 
+BACHELOR OF COMPUTER APPLICATION 
+(ACADEMIC SESSION: 2025-2026)
+
+
+MAJOR PROJECT REPORT
+
+ON
+GESTURE CONTROL VMOUSE
+
+<STUDENT NAME>
+<Registration No> (3RD  Year)
+
+
+
+[Guide Name]                                                Dr. Savita Shiwani  
+  (Project Guide)                                                    (Head of Department)
+
+
+
+Poornima University
+Plot No. 2027-2031, Ramchandrapura P.O. Vidhani Vatika Road, Sitapura, Jaipur, Rajasthan- 303905 (India)
+www.poornima.edu.in
+
+A
+
+MAJOR PROJECT REPORT
+On
+Title
+
+Submitted in partial fulfilment of the requirements for the award of the Degree of
+
+BACHELOR OF COMPUTER APPLICATION
+
+
+
+Poornima University, Jaipur (Academic Session: 2025-26)
+Submitted By:
+<Student Name>
+ <Registration No>
+3rd  Year, BCA 
+
+
+Submitted To:
+Department of Compute Application
+Faculty of Computer Science & Engineering, Poornima University
+ Ramchandrapura, Sitapura Ext., Jaipur, Rajasthan- (303905)
+
+
+CANDIDATE'S DECLARATION
+
+I hereby declare that the work presented in the Major Project report entitled "TITLE" is submitted by <Student Name>[<Registration No>] is in the fulfillment of the requirements for the award of Bachelor of Computer Application in Faculty of Computer Science & Engineering from Poornima University, Jaipur during the academic year 2025-26. The work has been found satisfactory, authentic of my own work carried out during me degree and approved for submission.
+The work reported in this has not been submitted by me for award of any other degree or diploma.
+
+
+Date: 
+	<Student Name>
+
+  __.04.2026                                                                                            [<Registration No>]
+                                                                                       
+
+CERTIFICATE
+
+ACKNOWLEDGEMENT
+
+Undertaking this Major Project has been a meticulously planned and guided journey, turning into a lifetime experience for me. Such an achievement would not have been possible without the invaluable support from various sources and individuals at Poornima University and Programming Express. 
+I extend my heartfelt gratitude to Dr. Ajay Khunteta, Dean of the Faculty of Computer Science & Engineering, for providing us with the platform and encouragement to successfully execute this project.
+
+I am deeply thankful to Dr.Savita Shiwani, HoD of Computer Application, for her continuous support and guidance throughout this endeavor. Her mentorship has been pivotal in navigating challenges and completing this project successfully.
+Additionally, I extend my sincere appreciation to Dr. Manoj Gupta, Pro-President of FCE, for his encouragement and visionary guidance. His leadership and valuable inputs significantly contributed to the overall success of our project.
+
+A special note of appreciation to our Class Tutor [Tutor Name] for their constant motivation and valuable insights throughout the project journey. I am also thankful to the librarian for providing access to essential resources and research materials that were instrumental in our study. Furthermore, I extend my sincere gratitude to all the faculty members of the Department of Computer Science & Engineering for their unwavering support and guidance.
+
+Lastly, I deeply appreciate my friends and team members, whose direct and indirect contributions, valuable suggestions, and encouragement have played a vital role in the successful completion of this project.
+       	
+           <Student Name>
+                                                                                                                 [<Registration No>]       
+
+ABSTRACT
+
+
+The project aims to develop a Python script utilizing computer vision techniques to control cursor movement and adjust system volume through hand gesture recognition. Leveraging libraries such as OpenCV, NumPy, Mediapipe, and Autopy, the script provides users with an intuitive and natural interface for interacting with their computers.
+
+The core functionality of the script revolves around detecting and tracking hand gestures captured from the webcam feed. The movement of the index finger is mapped to control the cursor on the screen, allowing users to navigate interfaces effortlessly. Additionally, gestures involving the index and middle fingers simulate left-click actions, enabling users to interact with on-screen elements seamlessly.
+
+To enhance usability, the script incorporates adjustable sensitivity settings for cursor control, ensuring precise and responsive movements tailored to individual preferences. Furthermore, mechanisms are implemented to handle boundary issues, confining cursor movement within the screen boundaries for a consistent user experience.
+
+In addition to cursor control, the script includes a volume controller using virtual mouse movements. By recognizing hand gestures and mapping them to volume adjustments, users can intuitively control system volume without the need for physical input devices.
+
+In some painting software we need to use mouse and keyboard in order to draw or paint on the screen, it has some ups and downs and they also contain limitations. In order to overcome this, we are developing a virtual hand gesture painting system that uses OpenCV and MediaPipe to enable users to draw shapes and write text in a digital environment. The system will use computer vision algorithms to recognize hand gestures and translate them into digital strokes on a virtual canvas.
+
+
+Recent improvements in gesture detection and hand tracking have brought about both
+opportunities and challenges. Try out a few of these options while outlining challenges and    exciting future possibilities for virtual reality and user engagement.
+
+Overall, the project aims to provide users with an innovative and efficient means of interacting with their computers, promoting accessibility, productivity, and user satisfaction in human-computer interaction. Through the integration of computer vision techniques and advanced features, the script offers a glimpse into the future of intuitive computing interfaces.
+
+
+
+Topic Page
+
+
+ABSTRACT
+
+
+1. TITLE OF CHAPTER ONE
+1.1 HEADING
+1.2 HEADING
+
+
+2. TITLE OF CHAPTER TWO
+2.1 HEADING
+2.2 HEADING
+:
+:
+:
+:
+:
+
+N-1
+  N. CONCLUSION BIBLIOGRAPHY APPENDIX - (If any)
+
+INDEX PAGE
+
+
+Page No.
+
+TABLE INDEX
+
+Table	Page No.
+
+1.1 Table 1 About
+
+1.2 Table 2 About
+
+
+2.1 Table 3 About
+
+2.2 Table 4 About
+
+
+
+: :
+: :
+: :
+
+
+
+
+N	Table N About
+
+BIBLIOGRAPHY
+
+[1] Don Box, "Design of Compiler for Mobile Environment and it's formalization using Evolving Algebra ", proceedings of 3rd IEEE International Conference on Mobile Data Management, Singapore, January 2002, PP 159-160.
+
+[2] "Author Guidelines", http://.computer.org/cspress/instruct.htm
+
+[3] William Stallings, "Cryptography and Network Security: Principles and Practices", Pearson Education, Third Edition
+
+Note: Strictly follow the above format for bibliography.
+
+Note :
+
+
+1. Report must be written in your own English language.
+
+2. Abstract should be not more than One Page.
+
+3. Report must be submitted as per notice
+
+4. Sequence of pages to be followed as:
+i) Cover page
+ii) First page
+iii) Certificate
+iv) Acknowledgement
+v) Page Index
+vi) Table Index
+vii) Figure Index
+viii) Abstract
+ix) Theory
+x) Conclusion
+xi) Bibliography
+xii) Appendices
+
+5. Sequence of Theory may be as follows:
+1. Introduction
+1.1 Subtopics 1.2
+2. Literature Survey
+(Depending on the selected topic)
+3. 3.1	3 to 4 Topics based on Major Project/Mini Project/Seminar  titles as per   requirement 
+
+
+Conclusion Bibliography
+
+
+
+
+
+
+
+

@@ -10,14 +10,16 @@ dashboard_bp = Blueprint('dashboard', __name__)
 @login_required
 def index():
     user_id = session['user_id']
-    raw_scans = Scan.get_recent(user_id, limit=10)
+
+    # Single query for both recent scans and trend data (previously 2 separate queries)
+    recent_scans_orm = Scan.for_user_query(user_id) \
+        .order_by(ScanModel.started_at.desc()).limit(10).all()
+
     total, vulns = Scan.get_stats(user_id)
 
-    # Trend data for charts (last 7 scans) — org-aware via Scan.for_user_query
-    trend_scans_orm = Scan.for_user_query(user_id) \
-        .order_by(ScanModel.started_at.desc()).limit(7).all()
+    # Build trend data from the same query results (first 7)
     trend_scans = []
-    for s in trend_scans_orm:
+    for s in recent_scans_orm[:7]:
         trend_scans.append({
             'started_at': s.started_at.isoformat() if s.started_at else '',
             'critical_count': s.critical_count or 0,
@@ -49,22 +51,25 @@ def index():
 
     # Transform recent scans to match template's expected property names
     recent_scans = []
-    for s in raw_scans:
-        started = str(s['started_at'] or '')
+    raw_scans = []
+    for s in recent_scans_orm:
+        started = s.started_at.isoformat() if s.started_at else ''
         date_display = started[:16].replace('T', ' ') if started else '—'
-        status = s['status']
+        status = s.status
         if status == 'completed':
             status = 'complete'
         recent_scans.append({
-            'id': s['id'],
-            'target': s['target_url'],
+            'id': s.id,
+            'target': s.target_url,
             'status': status,
-            'score': s['score'] or '—',
-            'critical': s['critical_count'] or 0,
-            'high': s['high_count'] or 0,
-            'med': s['medium_count'] or 0,
+            'score': s.score or '—',
+            'critical': s.critical_count or 0,
+            'high': s.high_count or 0,
+            'med': s.medium_count or 0,
             'date': date_display,
         })
+        # Also build raw_scans dict for backward compat
+        raw_scans.append({c.name: getattr(s, c.name) for c in ScanModel.__table__.columns})
 
     # Build trend data for chart
     trend_labels = []

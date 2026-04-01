@@ -19,8 +19,9 @@ class XSSScanner(BaseScanner):
 
     # ── Payload categories ───────────────────────────────────────────
 
-    def __init__(self, session=None, timeout=8, delay=0.5):
+    def __init__(self, session=None, timeout=8, delay=0.05):
         super().__init__(session, timeout, delay)
+        self._smart_loaded = False
         try:
             self.payload_manager = get_payload_manager()
             pm_payloads = self.payload_manager.get_payloads('xss', source='both')
@@ -37,7 +38,11 @@ class XSSScanner(BaseScanner):
             self.payload_manager = None
             logger.debug(f'PayloadManager not available: {e}')
 
-        # AI-generated smart payloads
+    def _ensure_smart_payloads(self):
+        """Lazy-load AI smart payloads on first scan() call, not in __init__."""
+        if self._smart_loaded:
+            return
+        self._smart_loaded = True
         try:
             smart = self._get_smart_payloads('xss')
             if smart:
@@ -397,6 +402,7 @@ class XSSScanner(BaseScanner):
     # ── Main scan ────────────────────────────────────────────────────
 
     def scan(self, target_url, injectable_points):
+        self._ensure_smart_payloads()
         self.findings = []
         seen = set()
 

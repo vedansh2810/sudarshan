@@ -15,8 +15,9 @@ class SQLInjectionScanner(BaseScanner):
 
     # ── Payloads ─────────────────────────────────────────────────────
 
-    def __init__(self, session=None, timeout=8, delay=0.5):
+    def __init__(self, session=None, timeout=8, delay=0.05):
         super().__init__(session, timeout, delay)
+        self._smart_loaded = False
         try:
             self.payload_manager = get_payload_manager()
             pm_payloads = self.payload_manager.get_payloads('sql_injection', source='both')
@@ -31,7 +32,11 @@ class SQLInjectionScanner(BaseScanner):
             self.payload_manager = None
             logger.debug(f'PayloadManager not available: {e}')
 
-        # AI-generated smart payloads
+    def _ensure_smart_payloads(self):
+        """Lazy-load AI smart payloads on first scan() call, not in __init__."""
+        if self._smart_loaded:
+            return
+        self._smart_loaded = True
         try:
             smart = self._get_smart_payloads('sql_injection')
             if smart:
@@ -230,7 +235,7 @@ class SQLInjectionScanner(BaseScanner):
     def _test_error_based(self, url, param_name, params, parsed):
         """Test for error-based SQL injection with WAF bypass."""
         for payload in self.ERROR_PAYLOADS:
-            payloads_to_test = [payload] + self._generate_waf_bypasses(payload)[:3]
+            payloads_to_test = [payload] + self._generate_waf_bypasses(payload)[:1]
 
             for test_payload in payloads_to_test:
                 test_url = self._build_url(parsed, params, param_name, test_payload)
@@ -382,19 +387,15 @@ class SQLInjectionScanner(BaseScanner):
         score = 0
         max_score = 4
 
-        # Test 1: Multiple similar payloads trigger errors
+        # Test 1: One similar payload confirms the finding (reduced from 3)
         if technique == 'error-based':
-            similar = [payload, payload.replace("'", '"'), payload + " --"]
-            positives = 0
-            for sp in similar:
-                test_url = self._build_url(parsed, params, param_name, sp)
-                resp = self._request('GET', test_url)
-                if resp:
-                    found, _, _ = self._check_error_based(resp.text)
-                    if found:
-                        positives += 1
-            if positives >= 2:
-                score += 2
+            alt_payload = payload.replace("'", '"') if "'" in payload else payload + " --"
+            test_url = self._build_url(parsed, params, param_name, alt_payload)
+            resp = self._request('GET', test_url)
+            if resp:
+                found, _, _ = self._check_error_based(resp.text)
+                if found:
+                    score += 2
 
         # Test 2: Baseline comparison — different status or length
         baseline = self._request('GET', url)
@@ -565,6 +566,7 @@ class SQLInjectionScanner(BaseScanner):
         return finding
 
     def scan(self, target_url, injectable_points):
+        self._ensure_smart_payloads()
         self.findings = []
         seen = set()
 

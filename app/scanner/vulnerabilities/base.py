@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseScanner:
-    def __init__(self, session=None, timeout=8, delay=0.5):
+    def __init__(self, session=None, timeout=8, delay=0.05):
         self.session = session or requests.Session()
         self.session.headers.update({'User-Agent': 'Sudarshan-Scanner/1.0'})
         self.session.verify = False  # Allow scanning HTTPS with self-signed certs

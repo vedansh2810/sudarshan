@@ -1,129 +1,127 @@
-{% extends "base.html" %}
+{% extends "layout.html" %}
+{% block page_title %}ML Statistics{% endblock %}
 {% block title %}ML Statistics{% endblock %}
 
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="mb-1"><i class="fas fa-chart-bar me-2" style="color: var(--accent);"></i>ML Training Statistics
-            </h2>
-            <p class="text-muted mb-0">Overview of training data and model performance</p>
-        </div>
-        <a href="{{ url_for('ml_admin.labeling') }}" class="btn btn-outline-info btn-sm">
-            <i class="fas fa-tag me-1"></i> Go to Labeling
-        </a>
+<div class="space-y-8 animate-fade-in-up">
+  <!-- Header -->
+  <div class="flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <h3 class="text-4xl font-black text-white tracking-tight font-display">ML <span class="text-primary">Statistics</span></h3>
+      <p class="text-slate-500 font-mono text-sm mt-2 uppercase tracking-widest">// TRAINING DATA & MODEL PERFORMANCE</p>
     </div>
+    <a href="/ml/labeling" class="bg-gradient-to-r from-primary to-cyan-600 text-[#060611] px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:opacity-90 transition-opacity">
+      <span class="material-symbols-outlined">label</span> DATA LABELING
+    </a>
+  </div>
 
-    <!-- Summary Cards -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-2">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-1">Total</h6>
-                    <h3 class="mb-0" style="color: var(--accent);">{{ stats.total_attempts }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-1">Labeled</h6>
-                    <h3 class="mb-0" style="color: var(--success);">{{ stats.labeled_attempts }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-1">Unlabeled</h6>
-                    <h3 class="mb-0" style="color: var(--warning);">{{ stats.unlabeled }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-1">True Positives</h6>
-                    <h3 class="mb-0" style="color: var(--danger);">{{ stats.true_positives }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h6 class="text-muted mb-1">False Positives</h6>
-                    <h3 class="mb-0" style="color: var(--success);">{{ stats.false_positives }}</h3>
-                </div>
-            </div>
-        </div>
+  <!-- Summary Cards -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    {% set cards = [
+      ('Total Attempts', stats.total_attempts, 'analytics', 'primary', 'border-t-primary'),
+      ('Labeled', stats.labeled_attempts, 'check_circle', 'emerald-500', 'border-t-emerald-500'),
+      ('Unlabeled', stats.unlabeled, 'pending', 'amber-500', 'border-t-amber-500'),
+      ('True Positives', stats.true_positives, 'bug_report', 'red-500', 'border-t-red-500'),
+      ('False Positives', stats.false_positives, 'verified_user', 'emerald-500', 'border-t-emerald-500')
+    ] %}
+    {% for label, value, icon, color, border in cards %}
+    <div class="glass-card p-5 rounded-xl border-t-2 {{ border }} hover:-translate-y-1 transition-transform duration-300 group animate-fade-in-up" style="animation-delay:{{ loop.index0 * 80 }}ms">
+      <div class="flex justify-between items-start mb-3">
+        <span class="material-symbols-outlined text-{{ color }} group-hover:scale-110 transition-transform">{{ icon }}</span>
+      </div>
+      <p class="text-slate-400 text-xs font-bold uppercase tracking-wider">{{ label }}</p>
+      <p class="text-3xl font-mono font-bold text-white mt-1">{{ value }}</p>
     </div>
+    {% endfor %}
+  </div>
 
-    <!-- Progress -->
-    {% if stats.total_attempts > 0 %}
-    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border);">
-        <div class="card-body">
-            <h5 class="card-title text-muted mb-3">Labeling Progress</h5>
-            {% set pct = ((stats.labeled_attempts / stats.total_attempts) * 100) | round(1) %}
-            <div class="progress" style="height: 24px; background: var(--bg-secondary);">
-                <div class="progress-bar"
-                    style="width: {{ pct }}%; background: linear-gradient(90deg, var(--accent), var(--accent2));">
-                    {{ pct }}%
-                </div>
-            </div>
-            <p class="text-muted mt-2 mb-0">
-                {{ stats.labeled_attempts }} of {{ stats.total_attempts }} attempts labeled
-                {% if stats.labeled_attempts < 100 %} · Need {{ 100 - stats.labeled_attempts }} more for ML training {%
-                    else %} · <span style="color: var(--success);"><i class="fas fa-check me-1"></i>Ready for ML
-                    training</span>
-                    {% endif %}
-            </p>
-        </div>
+  <!-- Labeling Progress -->
+  {% if stats.total_attempts > 0 %}
+  <div class="glass-card rounded-xl p-6">
+    <h4 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+      <span class="material-symbols-outlined text-primary">trending_up</span> Labeling Progress
+    </h4>
+    {% set pct = ((stats.labeled_attempts / stats.total_attempts) * 100) | round(1) %}
+    <div class="w-full bg-white/5 rounded-full h-3 overflow-hidden">
+      <div class="h-full rounded-full bg-gradient-to-r from-primary to-cyan-600 transition-all duration-700" style="width:{{ pct }}%"></div>
+    </div>
+    <div class="flex items-center justify-between mt-3">
+      <p class="text-sm text-slate-400">
+        <span class="text-white font-bold font-mono">{{ stats.labeled_attempts }}</span> of
+        <span class="text-white font-bold font-mono">{{ stats.total_attempts }}</span> attempts labeled
+      </p>
+      <div class="flex items-center gap-2">
+        {% if stats.labeled_attempts < 100 %}
+        <span class="text-xs font-mono text-amber-500 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">warning</span>
+          Need {{ 100 - stats.labeled_attempts }} more for ML training
+        </span>
+        {% else %}
+        <span class="text-xs font-mono text-emerald-500 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">check_circle</span>
+          Ready for ML training
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Breakdown by Type -->
+  <div class="glass-card rounded-xl overflow-hidden border border-slate-800">
+    <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-white/5">
+      <h4 class="text-lg font-bold text-white uppercase tracking-tight flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary">category</span> Breakdown by Type
+      </h4>
+    </div>
+    {% if stats.by_type %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-left">
+        <thead class="bg-slate-900/50 text-[11px] font-mono text-slate-500 uppercase tracking-widest border-b border-slate-800">
+          <tr>
+            <th class="px-6 py-4 font-normal">Vulnerability Type</th>
+            <th class="px-6 py-4 font-normal text-center">Total Attempts</th>
+            <th class="px-6 py-4 font-normal text-center">True Positives</th>
+            <th class="px-6 py-4 font-normal text-center">False Positive Rate</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/50">
+          {% for item in stats.by_type %}
+          <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-lg">shield</span>
+                <span class="text-sm font-bold text-white">{{ item.type.replace('_', ' ').title() }}</span>
+              </div>
+            </td>
+            <td class="px-6 py-4 text-center font-mono text-sm text-white">{{ item.total }}</td>
+            <td class="px-6 py-4 text-center font-mono text-sm text-red-500">{{ item.true_positives }}</td>
+            <td class="px-6 py-4 text-center">
+              {% if item.total > 0 %}
+              {% set fp_rate = (((item.total - item.true_positives) / item.total) * 100) | round(1) %}
+              <span class="sev-badge {% if fp_rate < 20 %}text-emerald-500 bg-emerald-500/10 border border-emerald-500/30{% elif fp_rate < 50 %}text-amber-500 bg-amber-500/10 border border-amber-500/30{% else %}text-red-500 bg-red-500/10 border border-red-500/30{% endif %}">
+                {{ fp_rate }}%
+              </span>
+              {% else %}
+              <span class="text-slate-500">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-16">
+      <span class="material-symbols-outlined text-4xl text-slate-600 block mb-3">model_training</span>
+      <p class="text-slate-400 font-semibold mb-1">No training data available</p>
+      <p class="text-sm text-slate-500">Run scans to collect data for ML model training.</p>
     </div>
     {% endif %}
-
-    <!-- By Type Breakdown -->
-    <div class="card" style="background: var(--bg-card); border: 1px solid var(--border);">
-        <div class="card-body">
-            <h5 class="card-title text-muted mb-3">Breakdown by Type</h5>
-            {% if stats.by_type %}
-            <div class="table-responsive">
-                <table class="table table-dark table-hover mb-0" style="background: transparent;">
-                    <thead>
-                        <tr>
-                            <th>Vulnerability Type</th>
-                            <th class="text-center">Total Attempts</th>
-                            <th class="text-center">True Positives</th>
-                            <th class="text-center">False Positive Rate</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in stats.by_type %}
-                        <tr>
-                            <td>
-                                <span class="badge bg-info me-2">{{ item.type }}</span>
-                            </td>
-                            <td class="text-center">{{ item.total }}</td>
-                            <td class="text-center">{{ item.true_positives }}</td>
-                            <td class="text-center">
-                                {% if item.total > 0 %}
-                                {% set fp_rate = (((item.total - item.true_positives) / item.total) * 100) | round(1) %}
-                                <span
-                                    class="{{ 'text-success' if fp_rate < 20 else 'text-warning' if fp_rate < 50 else 'text-danger' }}">
-                                    {{ fp_rate }}%
-                                </span>
-                                {% else %}
-                                —
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-muted mb-0">No training data available yet. Run scans to collect data.</p>
-            {% endif %}
-        </div>
-    </div>
+  </div>
 </div>
 {% endblock %}

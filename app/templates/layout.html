@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="flex h-screen overflow-hidden font-body">
+  <!-- Mobile Overlay -->
+  <div id="sidebar-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden lg:hidden" onclick="toggleSidebar()"></div>
+
   <!-- Sidebar -->
-  <aside class="w-[250px] bg-bg-secondary border-r border-slate-800 flex flex-col shrink-0">
+  <aside id="sidebar" class="w-[250px] bg-bg-secondary border-r border-slate-800 flex flex-col shrink-0 fixed lg:relative z-50 h-full -translate-x-full lg:translate-x-0 transition-transform duration-300">
     <a href="/dashboard" class="p-6 flex items-center gap-3">
       <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center shadow-lg shadow-primary/20">
         <span class="material-symbols-outlined text-[#060611] font-bold" style="font-variation-settings:'FILL' 1">shield_with_heart</span>
@@ -13,22 +16,24 @@
       </div>
     </a>
 
-    <nav class="flex-1 px-4 mt-6 space-y-2">
+    <nav class="flex-1 px-4 mt-4 space-y-1 overflow-y-auto">
       {% set current = request.path %}
+      <p class="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-4 mb-2">Main</p>
       {% for item in [
         ('/dashboard', 'dashboard', 'Dashboard'),
         ('/scan/new', 'radar', 'New Scan'),
         ('/history', 'history', 'Scan History')
       ] %}
-      <a href="{{ item[0] }}" class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all
+      <a href="{{ item[0] }}" class="flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all
         {% if current.startswith(item[0]) %}bg-primary/10 text-primary border border-primary/20{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
-        <span class="material-symbols-outlined text-[22px]">{{ item[1] }}</span>
+        <span class="material-symbols-outlined text-[20px]">{{ item[1] }}</span>
         <span class="text-sm font-semibold">{{ item[2] }}</span>
       </a>
       {% endfor %}
 
-      <a href="/logout" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-all mt-4">
-        <span class="material-symbols-outlined text-[22px]">logout</span>
+      <div class="h-px bg-slate-800 my-4"></div>
+      <a href="/logout" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all border border-transparent">
+        <span class="material-symbols-outlined text-[20px]">logout</span>
         <span class="text-sm font-semibold">Logout</span>
       </a>
     </nav>
@@ -43,15 +48,19 @@
   </aside>
 
   <!-- Main Area -->
-  <main class="flex-1 flex flex-col overflow-hidden">
+  <main class="flex-1 flex flex-col overflow-hidden w-full">
     <!-- Top Bar -->
-    <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-bg-card/50 backdrop-blur-md shrink-0">
-      <div class="flex items-center gap-2">
-        <span class="text-slate-500 text-sm font-medium italic font-mono">// root /</span>
+    <header class="h-16 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 bg-bg-card/50 backdrop-blur-md shrink-0">
+      <div class="flex items-center gap-3">
+        <!-- Mobile hamburger -->
+        <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer bg-transparent border-0">
+          <span class="material-symbols-outlined text-2xl">menu</span>
+        </button>
+        <span class="text-slate-500 text-sm font-medium italic font-mono hidden sm:inline">// root /</span>
         <h2 class="text-white font-bold tracking-tight">{% block page_title %}Dashboard{% endblock %}</h2>
       </div>
       <div class="flex items-center gap-3 pl-4 border-l border-slate-800">
-        <div class="text-right">
+        <div class="text-right hidden sm:block">
           <p class="text-sm font-bold text-white leading-none">{{ session.get('username', 'User') }}</p>
           <p class="text-[11px] text-primary font-mono mt-1">Security Analyst</p>
         </div>
@@ -62,7 +71,7 @@
     </header>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-8">
+    <div class="flex-1 overflow-y-auto p-4 lg:p-8">
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for cat, msg in messages %}
@@ -75,4 +84,13 @@
     </div>
   </main>
 </div>
+
+<script>
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    sidebar.classList.toggle('-translate-x-full');
+    overlay.classList.toggle('hidden');
+  }
+</script>
 {% endblock %}

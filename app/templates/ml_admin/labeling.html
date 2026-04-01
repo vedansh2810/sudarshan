@@ -1,181 +1,166 @@
-{% extends "base.html" %}
+{% extends "layout.html" %}
+{% block page_title %}ML Data Labeling{% endblock %}
 {% block title %}ML Data Labeling{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="space-y-8 animate-fade-in-up">
+  <!-- Header -->
+  <div class="flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <h3 class="text-4xl font-black text-white tracking-tight font-display">Data <span class="text-primary">Labeling</span></h3>
+      <p class="text-slate-500 font-mono text-sm mt-2 uppercase tracking-widest">// REVIEW & LABEL SCAN FINDINGS</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/ml/stats" class="px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+        <span class="material-symbols-outlined text-lg">bar_chart</span> Statistics
+      </a>
+      <a href="/ml/export" class="px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors">
+        <span class="material-symbols-outlined text-lg">download</span> Export
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {% set cards = [
+      ('Total Attempts', stats.total_attempts, 'analytics', 'primary', 'border-t-primary'),
+      ('Labeled', stats.labeled_attempts, 'check_circle', 'emerald-500', 'border-t-emerald-500'),
+      ('Unlabeled', stats.unlabeled, 'pending', 'amber-500', 'border-t-amber-500'),
+      ('True Positives', stats.true_positives, 'bug_report', 'red-500', 'border-t-red-500')
+    ] %}
+    {% for label, value, icon, color, border in cards %}
+    <div class="glass-card p-5 rounded-xl border-t-2 {{ border }} hover:-translate-y-1 transition-transform duration-300 group animate-fade-in-up" style="animation-delay:{{ loop.index0 * 80 }}ms">
+      <div class="flex justify-between items-start mb-3">
+        <span class="material-symbols-outlined text-{{ color }} group-hover:scale-110 transition-transform">{{ icon }}</span>
+      </div>
+      <p class="text-slate-400 text-xs font-bold uppercase tracking-wider">{{ label }}</p>
+      <p class="text-3xl font-mono font-bold text-white mt-1">{{ value }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Filter -->
+  <div class="glass-card rounded-xl p-4 flex flex-wrap gap-4 items-center">
+    <form method="GET" class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-slate-500 text-lg">filter_list</span>
+      <select name="type" onchange="this.form.submit()"
+        class="bg-bg-primary border border-slate-700 text-slate-300 text-sm rounded-lg px-3 py-2 font-mono focus:outline-none focus:border-primary cursor-pointer">
+        <option value="">All Types</option>
+        <option value="sql_injection" {{ 'selected' if selected_type=='sql_injection' }}>SQL Injection</option>
+        <option value="xss" {{ 'selected' if selected_type=='xss' }}>XSS</option>
+        <option value="csrf" {{ 'selected' if selected_type=='csrf' }}>CSRF</option>
+        <option value="command_injection" {{ 'selected' if selected_type=='command_injection' }}>Command Injection</option>
+        <option value="directory_traversal" {{ 'selected' if selected_type=='directory_traversal' }}>Directory Traversal</option>
+        <option value="idor" {{ 'selected' if selected_type=='idor' }}>IDOR</option>
+      </select>
+    </form>
+    <span class="text-xs text-slate-500 ml-auto font-mono">{{ attempts|length if attempts else 0 }} items</span>
+  </div>
+
+  <!-- Attempts List -->
+  {% if attempts %}
+  <div class="space-y-4">
+    {% set sev_colors = {'critical': '#ff2d55', 'high': '#ff6400', 'medium': '#ffb800', 'low': '#00d46a', 'info': '#3b82f6'} %}
+    {% for attempt in attempts %}
+    <div class="glass-card rounded-xl overflow-hidden border border-slate-800 animate-fade-in-up" style="animation-delay:{{ loop.index0 * 40 }}ms" id="attempt-{{ attempt.id }}">
+      <div class="p-5 space-y-4">
+        <!-- Top Row -->
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div class="flex items-center gap-3 flex-wrap">
+            {% set sev = attempt.severity or 'medium' %}
+            <span class="sev-badge" style="color:{{ sev_colors.get(sev, '#3b82f6') }};background:{{ sev_colors.get(sev, '#3b82f6') }}15;border:1px solid {{ sev_colors.get(sev, '#3b82f6') }}50">
+              {{ attempt.vulnerability_type | upper }}
+            </span>
+            <span class="text-xs font-mono text-slate-400 px-2 py-1 rounded bg-white/5 border border-slate-800">{{ attempt.technique }}</span>
+            <span class="text-xs text-slate-600 font-mono flex items-center gap-1">
+              <span class="material-symbols-outlined text-sm">schedule</span>
+              {{ attempt.timestamp.strftime('%Y-%m-%d %H:%M') if attempt.timestamp else '—' }}
+            </span>
+          </div>
+          <div class="text-xs font-mono text-slate-400 px-3 py-1.5 rounded-lg bg-white/5 border border-slate-800">
+            Confidence: <span class="text-white font-bold">{{ attempt.confidence | round(1) if attempt.confidence else 'N/A' }}%</span>
+          </div>
+        </div>
+
+        <!-- Details Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="md:col-span-2 p-3 rounded-lg bg-[#030308] border border-slate-800">
+            <p class="text-[10px] text-slate-600 uppercase tracking-wider font-bold mb-1">URL</p>
+            <code class="text-sm text-primary font-mono break-all">{{ attempt.url | truncate(120) }}</code>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="p-3 rounded-lg bg-[#030308] border border-slate-800">
+              <p class="text-[10px] text-slate-600 uppercase tracking-wider font-bold mb-1">Parameter</p>
+              <code class="text-sm text-accent-purple font-mono">{{ (attempt.parameter or 'N/A') }}</code>
+            </div>
+            <div class="p-3 rounded-lg bg-[#030308] border border-slate-800">
+              <p class="text-[10px] text-slate-600 uppercase tracking-wider font-bold mb-1">Method</p>
+              <code class="text-sm text-white font-mono">{{ attempt.method }}</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payload -->
         <div>
-            <h2 class="mb-1"><i class="fas fa-brain me-2" style="color: var(--accent);"></i>ML Data Labeling</h2>
-            <p class="text-muted mb-0">Review and label scan findings as true or false positives</p>
+          <p class="text-[10px] text-slate-600 uppercase tracking-wider font-bold mb-1">Payload</p>
+          <pre class="bg-[#030308] rounded-lg p-4 text-sm font-mono text-red-400 overflow-x-auto border border-slate-800 whitespace-pre-wrap break-all">{{ attempt.payload | truncate(300) }}</pre>
         </div>
-        <div class="d-flex gap-2">
-            <a href="{{ url_for('ml_admin.stats') }}" class="btn btn-outline-info btn-sm">
-                <i class="fas fa-chart-bar me-1"></i> Statistics
-            </a>
-            <a href="{{ url_for('ml_admin.export_data') }}" class="btn btn-outline-success btn-sm">
-                <i class="fas fa-download me-1"></i> Export
-            </a>
+
+        <!-- Label Buttons -->
+        <div class="flex items-center justify-end gap-3 pt-2 border-t border-slate-800 label-buttons">
+          <button onclick="labelAttempt({{ attempt.id }}, true)"
+            class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-red-500/30 bg-red-500/10 text-red-500 cursor-pointer transition-all hover:bg-red-500/20">
+            <span class="material-symbols-outlined text-lg">bug_report</span> True Positive
+          </button>
+          <button onclick="labelAttempt({{ attempt.id }}, false)"
+            class="px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all hover:bg-emerald-500/20">
+            <span class="material-symbols-outlined text-lg">check_circle</span> False Positive
+          </button>
         </div>
+      </div>
     </div>
-
-    <!-- Stats Cards -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h5 class="text-muted mb-1">Total Attempts</h5>
-                    <h2 class="mb-0" style="color: var(--accent);">{{ stats.total_attempts }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h5 class="text-muted mb-1">Labeled</h5>
-                    <h2 class="mb-0" style="color: var(--success);">{{ stats.labeled_attempts }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h5 class="text-muted mb-1">Unlabeled</h5>
-                    <h2 class="mb-0" style="color: var(--warning);">{{ stats.unlabeled }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body text-center">
-                    <h5 class="text-muted mb-1">True Positives</h5>
-                    <h2 class="mb-0" style="color: var(--danger);">{{ stats.true_positives }}</h2>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Filter -->
-    <div class="mb-4">
-        <form method="GET" class="d-flex gap-2 align-items-center">
-            <label class="text-muted">Filter by type:</label>
-            <select name="type" class="form-select form-select-sm"
-                style="width: auto; background: var(--bg-card); color: var(--text-primary); border-color: var(--border);"
-                onchange="this.form.submit()">
-                <option value="">All Types</option>
-                <option value="sql_injection" {{ 'selected' if selected_type=='sql_injection' }}>SQL Injection</option>
-                <option value="xss" {{ 'selected' if selected_type=='xss' }}>XSS</option>
-                <option value="csrf" {{ 'selected' if selected_type=='csrf' }}>CSRF</option>
-                <option value="command_injection" {{ 'selected' if selected_type=='command_injection' }}>Command
-                    Injection</option>
-                <option value="directory_traversal" {{ 'selected' if selected_type=='directory_traversal' }}>Directory
-                    Traversal</option>
-                <option value="idor" {{ 'selected' if selected_type=='idor' }}>IDOR</option>
-            </select>
-        </form>
-    </div>
-
-    <!-- Attempts List -->
-    {% if attempts %}
-    <div class="row g-3">
-        {% for attempt in attempts %}
-        <div class="col-12" id="attempt-{{ attempt.id }}">
-            <div class="card" style="background: var(--bg-card); border: 1px solid var(--border);">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-3">
-                        <div>
-                            <span
-                                class="badge bg-{{ 'danger' if attempt.severity == 'critical' else 'warning' if attempt.severity == 'high' else 'info' }} me-2">
-                                {{ attempt.vulnerability_type | upper | e }}
-                            </span>
-                            <span class="badge bg-secondary me-2">{{ attempt.technique | e }}</span>
-                            <span class="text-muted small">
-                                <i class="fas fa-clock me-1"></i>{{ attempt.timestamp.strftime('%Y-%m-%d %H:%M') if
-                                attempt.timestamp }}
-                            </span>
-                        </div>
-                        <span class="badge bg-dark">Confidence: {{ attempt.confidence | round(1) if attempt.confidence
-                            else 'N/A' }}%</span>
-                    </div>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <div class="p-2 rounded" style="background: var(--bg-secondary);">
-                                <small class="text-muted d-block mb-1">URL</small>
-                                <code class="text-break"
-                                    style="color: var(--accent); font-size: 0.85em;">{{ attempt.url | truncate(120) | e }}</code>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-2 rounded" style="background: var(--bg-secondary);">
-                                <small class="text-muted d-block mb-1">Parameter</small>
-                                <code style="color: var(--accent2);">{{ (attempt.parameter or 'N/A') | e }}</code>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="p-2 rounded" style="background: var(--bg-secondary);">
-                                <small class="text-muted d-block mb-1">Method</small>
-                                <code>{{ attempt.method | e }}</code>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <small class="text-muted d-block mb-1">Payload</small>
-                        <pre class="p-2 rounded mb-0"
-                            style="background: var(--bg-secondary); color: #f87171; font-size: 0.85em; overflow-x: auto; white-space: pre-wrap;">{{ attempt.payload | truncate(300) | e }}</pre>
-                    </div>
-
-                    <!-- Label Buttons -->
-                    <div class="d-flex gap-2 justify-content-end label-buttons">
-                        <button class="btn btn-outline-danger btn-sm" onclick="labelAttempt({{ attempt.id }}, true)">
-                            <i class="fas fa-bug me-1"></i> True Positive
-                        </button>
-                        <button class="btn btn-outline-success btn-sm" onclick="labelAttempt({{ attempt.id }}, false)">
-                            <i class="fas fa-check me-1"></i> False Positive
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="text-center py-5">
-        <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
-        <h5 class="text-muted">No unlabeled attempts</h5>
-        <p class="text-muted">Run some scans to generate data for labeling.</p>
-    </div>
-    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass-card rounded-xl p-16 text-center">
+    <span class="material-symbols-outlined text-5xl text-slate-600 block mb-3">inbox</span>
+    <p class="text-slate-400 font-semibold text-lg mb-1">No unlabeled attempts</p>
+    <p class="text-sm text-slate-500">Run some scans to generate data for labeling.</p>
+  </div>
+  {% endif %}
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    function labelAttempt(attemptId, isTruePositive) {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-        fetch(`/ml/label/${attemptId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            body: JSON.stringify({
-                is_true_positive: isTruePositive,
-                notes: '',
-            }),
-        })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const card = document.getElementById(`attempt-${attemptId}`);
-                    const label = isTruePositive ? 'TRUE POSITIVE' : 'FALSE POSITIVE';
-                    const color = isTruePositive ? 'var(--danger)' : 'var(--success)';
-                    const btns = card.querySelector('.label-buttons');
-                    btns.innerHTML = `<span class="badge" style="background: ${color}; font-size: 0.9em;">${label}</span>`;
-                    card.style.opacity = '0.6';
-                } else {
-                    alert('Error: ' + (data.error || 'Unknown'));
-                }
-            })
-            .catch(err => alert('Network error: ' + err));
-    }
+  function labelAttempt(attemptId, isTruePositive) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    fetch('/ml/label/' + attemptId, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+      },
+      body: JSON.stringify({
+        is_true_positive: isTruePositive,
+        notes: '',
+      }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          const card = document.getElementById('attempt-' + attemptId);
+          const label = isTruePositive ? 'TRUE POSITIVE' : 'FALSE POSITIVE';
+          const color = isTruePositive ? '#ff2d55' : '#00d46a';
+          const btns = card.querySelector('.label-buttons');
+          btns.innerHTML = '<span class="sev-badge" style="color:' + color + ';background:' + color + '15;border:1px solid ' + color + '50">' + label + '</span>';
+          card.style.opacity = '0.5';
+          card.style.transition = 'opacity 0.4s';
+        } else {
+          alert('Error: ' + (data.error || 'Unknown'));
+        }
+      })
+      .catch(err => alert('Network error: ' + err));
+  }
 </script>
 {% endblock %}
