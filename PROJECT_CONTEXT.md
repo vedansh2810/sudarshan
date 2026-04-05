@@ -247,9 +247,21 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 ### Railway Deployment (Primary)
 - **Web service** — Docker-based, uses `Procfile` web process (gunicorn)
 - **Worker service** — Celery background worker via `Procfile` worker process
-- **Redis** — One-click Redis plugin (auto-sets `REDIS_URL`)
+- **Redis** — Deployed as a Railway service named "Redis" (exposes `REDIS_URL`)
 - Auto-deploys on push to `main` branch
-- Health check at `/api/health`
+- Health check at `/api/health` (web service only — worker has no HTTP server)
+
+#### Worker service environment variables (Railway dashboard)
+The `sudarshan-worker` service must reference the "Redis" Railway service:
+| Variable | Value |
+|----------|-------|
+| `REDIS_URL` | `${{Redis.REDIS_URL}}` |
+| `CELERY_BROKER_URL` | `${{Redis.REDIS_URL}}` |
+| `CELERY_RESULT_BACKEND` | `${{Redis.REDIS_URL}}` |
+
+The worker start command must be set to:
+`celery -A app.celery_app:celery worker --loglevel=info --concurrency=2`
+The health check path must be left **blank** (Celery workers serve no HTTP).
 
 ### Render Deployment (Legacy — `render.yaml`)
 - Kept as backup; 3-service config (web + worker + redis)
@@ -290,7 +302,9 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 |----------|---------|----------|
 | `SECRET_KEY` | Flask session encryption | Production |
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `REDIS_URL` | Redis connection (Celery, rate-limiting, SSE) | Optional |
+| `REDIS_URL` | Redis connection (Celery, rate-limiting, SSE) — set to `${{Redis.REDIS_URL}}` on Railway | Optional |
+| `CELERY_BROKER_URL` | Celery broker URL — set to `${{Redis.REDIS_URL}}` on Railway | Optional |
+| `CELERY_RESULT_BACKEND` | Celery result backend URL — set to `${{Redis.REDIS_URL}}` on Railway | Optional |
 | `SUPABASE_URL` | Supabase project URL | Yes |
 | `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key | Yes |
