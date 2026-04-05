@@ -7,3 +7,15 @@ healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+# ── Worker service overrides ──────────────────────────────────────────────────
+# The sudarshan-worker service runs Celery (no HTTP server), so it must NOT
+# use the healthcheckPath above. In the Railway dashboard, configure the worker
+# service with:
+#   Start Command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=2
+#   Health Check:  (none — leave blank)
+#
+# Required environment variables for the worker service (Railway dashboard):
+#   REDIS_URL             = ${{Redis.REDIS_URL}}
+#   CELERY_BROKER_URL     = ${{Redis.REDIS_URL}}
+#   CELERY_RESULT_BACKEND = ${{Redis.REDIS_URL}}
