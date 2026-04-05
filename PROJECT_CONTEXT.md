@@ -7,7 +7,7 @@
 **AI/LLM:** Groq API (Llama 3.3 70B Versatile)  
 **ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)  
 **Task Queue:** Celery + Redis (optional — falls back to in-process threading)  
-**Deployment:** Docker + docker-compose (gunicorn)  
+**Deployment:** Railway (primary) / Docker + docker-compose (local dev)  
 
 ---
 
@@ -104,7 +104,9 @@ sudarshan/
 │   └── test_smart_engine_integration.py
 ├── Dockerfile                      # Python 3.12-slim + gunicorn
 ├── docker-compose.yml              # web + worker + redis (3 services)
-├── render.yaml                     # Render Blueprint (IaC deployment)
+├── railway.toml                    # Railway deployment config (primary)
+├── Procfile                        # Process definitions (web + worker)
+├── render.yaml                     # Render Blueprint (legacy, kept as backup)
 ├── report_guidelines.txt           # College project report formatting rules
 ├── requirements.txt                # 46 Python dependencies
 └── .env                            # Environment variables
@@ -242,11 +244,16 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 2. **worker** — Celery worker (concurrency 2)
 3. **redis** — Redis 7 Alpine (password-protected)
 
-### Render Deployment (`render.yaml`)
-- **sudarshan-web** — Docker-based web service (free plan, Singapore region)
-- **sudarshan-worker** — Celery background worker
-- **sudarshan-redis** — Redis message broker (allkeys-lru eviction)
+### Railway Deployment (Primary)
+- **Web service** — Docker-based, uses `Procfile` web process (gunicorn)
+- **Worker service** — Celery background worker via `Procfile` worker process
+- **Redis** — One-click Redis plugin (auto-sets `REDIS_URL`)
 - Auto-deploys on push to `main` branch
+- Health check at `/api/health`
+
+### Render Deployment (Legacy — `render.yaml`)
+- Kept as backup; 3-service config (web + worker + redis)
+- Can be removed once Railway is fully validated
 
 ### SSE Event Streaming
 - **Redis mode:** pub/sub on `scan:{id}:events` channel
@@ -303,7 +310,12 @@ python run.py
 # Docker
 docker-compose up --build
 
-# Render (auto-deploys from GitHub)
+# Railway (auto-deploys from GitHub)
+# 1. Connect repo at railway.app
+# 2. Add Redis plugin
+# 3. Set env vars → Deploy
+
+# Render (legacy — auto-deploys from GitHub)
 # Push to main → Render picks up changes via render.yaml Blueprint
 
 # Celery worker (separate terminal)
