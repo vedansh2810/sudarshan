@@ -15,7 +15,6 @@ psycopg[binary]>=3.1.0
 # === Auth ===
 gotrue>=2.0.0
 PyJWT>=2.8.0
-httpx>=0.25.0
 
 # === Task Queue ===
 celery[redis]==5.4.0
