@@ -70,8 +70,18 @@ class ScanManager:
             return self._redis
         self._redis_checked = True
         try:
+            # Use Flask app config if available, otherwise fall back to Config
+            try:
+                redis_url = current_app.config.get('REDIS_URL', '')
+            except RuntimeError:
+                redis_url = Config.REDIS_URL
+            if not redis_url:
+                logger.info("REDIS_URL not configured — using threading mode")
+                self._redis = None
+                self._use_celery = False
+                return self._redis
             import redis as redis_lib
-            r = redis_lib.from_url(Config.REDIS_URL, socket_connect_timeout=2)
+            r = redis_lib.from_url(redis_url, socket_connect_timeout=2)
             r.ping()
             self._redis = r
             self._use_celery = True

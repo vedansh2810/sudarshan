@@ -35,8 +35,11 @@ logger = logging.getLogger(__name__)
 def _get_redis():
     """Get Redis client, returns None if unavailable."""
     try:
+        redis_url = Config.REDIS_URL
+        if not redis_url:
+            return None
         import redis as redis_lib
-        r = redis_lib.from_url(Config.REDIS_URL)
+        r = redis_lib.from_url(redis_url)
         r.ping()
         return r
     except Exception:

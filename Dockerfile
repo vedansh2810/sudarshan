@@ -2,9 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (curl for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    gcc curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -17,9 +17,17 @@ COPY . .
 # Create data directories
 RUN mkdir -p data/reports data/ml_models logs
 
-# Default port (Render injects PORT env var automatically)
-ENV PORT=5000
+# Production environment
+ENV FLASK_ENV=production
+ENV FLASK_DEBUG=0
+ENV PORT=8000
+
 EXPOSE ${PORT}
 
-# Run with gunicorn — uses $PORT so Render can override it
-CMD gunicorn -w 2 -b 0.0.0.0:${PORT} --timeout 120 run:app
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/api/health || exit 1
+
+# Run with gunicorn — single-service mode (threading fallback for scans)
+# 2 workers + 4 threads each = handles concurrent requests while scanning
+CMD gunicorn -w 2 --threads 4 -b 0.0.0.0:${PORT} --timeout 300 --keep-alive 5 run:app

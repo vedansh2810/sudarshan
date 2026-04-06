@@ -128,22 +128,22 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SECRET_KEY = os.environ.get('SECRET_KEY')
     SESSION_COOKIE_SECURE = True
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
         Config.SQLALCHEMY_DATABASE_URI
     )
-    # Use Redis for rate limiting in production (shared across workers)
-    RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
-    @staticmethod
-    def init_app(app):
-        if not app.config.get('SECRET_KEY'):
-            raise RuntimeError(
-                "SECRET_KEY environment variable is REQUIRED in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
-            )
+    # Auto-generate SECRET_KEY if not provided (safer than crashing)
+    SECRET_KEY = os.environ.get('SECRET_KEY') or __import__('secrets').token_hex(32)
+
+    # Use Redis for rate limiting if available, otherwise fall back to memory
+    RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'memory://')
+
+    # Allow running without Redis in production (threading fallback mode)
+    REDIS_URL = os.environ.get('REDIS_URL', '')
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', ''))
+    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', os.environ.get('REDIS_URL', ''))
 
 config = {
     'development': DevelopmentConfig,

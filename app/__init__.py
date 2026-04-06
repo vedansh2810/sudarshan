@@ -26,7 +26,16 @@ def create_app(config=None):
     load_dotenv()
 
     app = Flask(__name__)
-    app.config.from_object(config or DevelopmentConfig)
+
+    # Auto-select config based on FLASK_ENV environment variable
+    if config is None:
+        flask_env = os.environ.get('FLASK_ENV', 'development')
+        if flask_env == 'production':
+            from app.config import ProductionConfig
+            config = ProductionConfig
+        else:
+            config = DevelopmentConfig
+    app.config.from_object(config)
 
     # Fix common Supabase/Heroku PostgreSQL URI issue:
     # They may provide 'postgres://' but SQLAlchemy requires 'postgresql://'
