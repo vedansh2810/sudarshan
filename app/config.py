@@ -14,10 +14,10 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': 10,
-        'max_overflow': 20,
+        'pool_size': 5,
+        'max_overflow': 10,
         'pool_timeout': 30,
-        'pool_recycle': 1800,    # Recycle connections every 30 min
+        'pool_recycle': 300,     # Recycle connections every 5 min (Supabase pooler compat)
         'pool_pre_ping': True,   # Verify connections before use
     }
 
