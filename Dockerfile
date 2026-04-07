@@ -23,5 +23,8 @@ ENV PORT=5000
 ENV FLASK_ENV=production
 EXPOSE ${PORT}
 
-# Run with gunicorn — uses $PORT so Render can override it
-CMD gunicorn -w 2 -b 0.0.0.0:${PORT} --timeout 300 --keep-alive 5 --access-logfile - --error-logfile - run:app
+# Run with gevent async workers — critical for SSE scan progress streams
+# -k gevent: each SSE connection uses a lightweight greenlet instead of blocking a worker
+# --worker-connections 50: max concurrent connections per worker (SSE + normal requests)
+# --timeout 300: worker heartbeat timeout (scan SSE streams send heartbeats every 30s)
+CMD gunicorn -k gevent --worker-connections 50 -w 2 -b 0.0.0.0:${PORT} --timeout 300 --keep-alive 5 --access-logfile - --error-logfile - run:app
