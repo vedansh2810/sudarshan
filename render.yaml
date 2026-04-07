@@ -1,10 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────
 # Sudarshan — Render Blueprint (Infrastructure as Code)
 # Deploy: render.com → New → Blueprint → Select repo
+#
+# NOTE: Worker runs inside the web container (start.sh) because
+# Render's free tier doesn't support separate Background Workers.
 # ─────────────────────────────────────────────────────────────────────
 
 services:
-  # ── 1. Flask Web Server (Gunicorn) ──────────────────────────────────
+  # ── 1. Flask Web Server + Celery Worker (combined) ──────────────────
   - type: web
     name: sudarshan-web
     runtime: docker
@@ -47,50 +50,7 @@ services:
           type: redis
           property: connectionString
 
-  # ── 2. Celery Background Worker ─────────────────────────────────────
-  - type: worker
-    name: sudarshan-worker
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: celery -A app.celery_app:celery worker --loglevel=info --concurrency=2
-    plan: free
-    region: singapore
-    envVars:
-      - key: FLASK_ENV
-        value: production
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DATABASE_URL
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
-      - key: ALLOW_LOCAL_TARGETS
-        value: "false"
-      - key: REDIS_URL
-        fromService:
-          name: sudarshan-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: sudarshan-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: sudarshan-redis
-          type: redis
-          property: connectionString
-
-  # ── 3. Redis (Message Broker + Cache) ───────────────────────────────
+  # ── 2. Redis (Message Broker + Cache) ───────────────────────────────
   - type: redis
     name: sudarshan-redis
     plan: free

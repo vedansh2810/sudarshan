@@ -3,7 +3,7 @@ from app.models.scan import Scan
 from app.models.database import db, ScanModel, VulnerabilityModel
 from app.scanner.scan_manager import ScanManager
 from app.utils.auth_utils import login_required
-from app import csrf
+from app import csrf, limiter
 from sqlalchemy import func
 
 api_bp = Blueprint('api', __name__)
@@ -46,6 +46,7 @@ def global_stats():
     })
 
 @api_bp.route('/api/health')
+@limiter.exempt
 def health():
     """Health check endpoint for load balancer / container probes."""
     return jsonify({'status': 'healthy', 'service': 'sudarshan'})
