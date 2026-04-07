@@ -15,7 +15,6 @@ psycopg[binary]>=3.1.0
 # === Auth ===
 gotrue>=2.0.0
 PyJWT>=2.8.0
-httpx>=0.25.0
 
 # === Task Queue ===
 celery[redis]==5.4.0
@@ -26,6 +25,7 @@ requests==2.31.0
 beautifulsoup4==4.12.2
 lxml
 urllib3==2.0.7
+httpx>=0.27.0
 
 # === AI / LLM ===
 groq>=0.12.0

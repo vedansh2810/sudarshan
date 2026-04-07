@@ -38,3 +38,6 @@ node_modules/
 
 # Docker
 docker-compose.override.yml
+
+# Nested repo
+sudarshan/

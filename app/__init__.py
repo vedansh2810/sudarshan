@@ -4,7 +4,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
-from app.config import DevelopmentConfig
+from app.config import DevelopmentConfig, ProductionConfig
 from app.models.database import db, init_db
 import os
 import logging
@@ -25,16 +25,12 @@ def create_app(config=None):
     from dotenv import load_dotenv
     load_dotenv()
 
-    app = Flask(__name__)
-
-    # Auto-select config based on FLASK_ENV environment variable
+    # Auto-detect production environment
     if config is None:
         flask_env = os.environ.get('FLASK_ENV', 'development')
-        if flask_env == 'production':
-            from app.config import ProductionConfig
-            config = ProductionConfig
-        else:
-            config = DevelopmentConfig
+        config = ProductionConfig if flask_env == 'production' else DevelopmentConfig
+
+    app = Flask(__name__)
     app.config.from_object(config)
 
     # Fix common Supabase/Heroku PostgreSQL URI issue:

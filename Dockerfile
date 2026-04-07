@@ -2,9 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (curl needed for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc curl \
+    gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -14,17 +15,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create data directories with proper permissions
-RUN mkdir -p data/reports data/ml_models logs && \
-    chmod -R 777 data logs
+# Create data directories
+RUN mkdir -p data/reports data/ml_models logs
 
-# Production environment — HF Spaces requires port 7860
+# Production defaults (Render injects PORT automatically)
+ENV PORT=5000
 ENV FLASK_ENV=production
-ENV FLASK_DEBUG=0
-ENV PORT=7860
+EXPOSE ${PORT}
 
-EXPOSE 7860
-
-# Run with gunicorn — single-service mode (threading fallback for scans)
-# 2 workers + 4 threads each = handles concurrent requests while scanning
-CMD gunicorn -w 2 --threads 4 -b 0.0.0.0:7860 --timeout 300 --keep-alive 5 run:app
+# Run with gunicorn — uses $PORT so Render can override it
+CMD gunicorn -w 2 -b 0.0.0.0:${PORT} --timeout 300 --keep-alive 5 --access-logfile - --error-logfile - run:app
