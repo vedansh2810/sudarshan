@@ -23,5 +23,5 @@ ENV PORT=5000
 ENV FLASK_ENV=production
 EXPOSE ${PORT}
 
-# Run both Gunicorn + Celery via start.sh (Render free tier has no separate worker)
+# Run both Gunicorn + Celery via start.sh
 CMD ["./start.sh"]
