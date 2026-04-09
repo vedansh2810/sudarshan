@@ -1,7 +1,7 @@
 """Authentication routes using Supabase Auth.
 Supabase handles user registration and login; Flask manages the session."""
 import logging
-import httpx
+import requests as http_requests
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, current_app, jsonify)
 from app.models.user import User
@@ -22,7 +22,7 @@ def _verify_supabase_token(access_token):
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
 
     # Call Supabase Auth API to verify the token and get user info
-    resp = httpx.get(
+    resp = http_requests.get(
         f"{supabase_url}/auth/v1/user",
         headers={
             'Authorization': f'Bearer {access_token}',

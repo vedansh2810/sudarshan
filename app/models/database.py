@@ -100,26 +100,7 @@ class ScanLogModel(db.Model):
 
 def init_db():
     """Create all tables and apply column migrations for existing tables."""
-    import logging
-    logger = logging.getLogger(__name__)
-
-    try:
-        db.create_all()
-        logger.info("Database tables created/verified successfully")
-    except Exception as e:
-        # Tables likely already exist with slightly different schema (e.g. TIMESTAMPTZ vs TIMESTAMP)
-        # This is normal when connecting to an existing Supabase database
-        logger.warning(f"create_all() encountered an issue (tables may already exist): {e}")
-        # Try to create only missing tables individually
-        try:
-            from sqlalchemy import inspect as sa_inspect
-            existing = sa_inspect(db.engine).get_table_names()
-            for table in db.metadata.sorted_tables:
-                if table.name not in existing:
-                    table.create(db.engine, checkfirst=True)
-                    logger.info(f"Created missing table: {table.name}")
-        except Exception as e2:
-            logger.warning(f"Individual table creation also failed: {e2}")
+    db.create_all()
 
     # Apply column migrations for existing tables that need new columns
     from sqlalchemy import inspect, text

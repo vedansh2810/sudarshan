@@ -14,10 +14,10 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': 5,
-        'max_overflow': 10,
+        'pool_size': 10,
+        'max_overflow': 20,
         'pool_timeout': 30,
-        'pool_recycle': 300,     # Recycle connections every 5 min (Supabase pooler compat)
+        'pool_recycle': 1800,    # Recycle connections every 30 min
         'pool_pre_ping': True,   # Verify connections before use
     }
 
@@ -129,15 +129,21 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
     SECRET_KEY = os.environ.get('SECRET_KEY')
-    SESSION_COOKIE_SECURE = True           # Requires HTTPS (Render provides this)
-    SESSION_COOKIE_SAMESITE = 'Lax'        # Required for OAuth redirect flows
-    PREFERRED_URL_SCHEME = 'https'         # url_for() generates https:// links
+    SESSION_COOKIE_SECURE = True
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
         Config.SQLALCHEMY_DATABASE_URI
     )
     # Use Redis for rate limiting in production (shared across workers)
-    RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'memory://')
+    RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+    @staticmethod
+    def init_app(app):
+        if not app.config.get('SECRET_KEY'):
+            raise RuntimeError(
+                "SECRET_KEY environment variable is REQUIRED in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
 
 config = {
     'development': DevelopmentConfig,

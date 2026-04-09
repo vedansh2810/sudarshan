@@ -39,5 +39,8 @@ node_modules/
 # Docker
 docker-compose.override.yml
 
-# Nested repo
+# HuggingFace Spaces clone
 sudarshan/
+
+# Gemini / AI tool data
+.gemini/

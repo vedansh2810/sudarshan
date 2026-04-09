@@ -7,7 +7,7 @@
 **AI/LLM:** Groq API (Llama 3.3 70B Versatile)  
 **ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)  
 **Task Queue:** Celery + Redis (optional — falls back to in-process threading)  
-**Deployment:** Railway (primary) / Docker + docker-compose (local dev)  
+**Deployment:** Docker + docker-compose (gunicorn)  
 
 ---
 
@@ -75,15 +75,16 @@ sudarshan/
 │   │   └── url_safety.py           # SSRF protection (IP validation)
 │   ├── monitoring/
 │   │   └── metrics.py              # Prometheus metrics
-│   └── templates/                  # Jinja2 HTML templates (Tailwind CDN + custom CSS)
-│       ├── base.html / layout.html # Base templates (design system, nav effects, email btn effects)
-│       ├── auth/                   # Login/Register pages (premium hover effects)
+│   └── templates/                  # Jinja2 HTML templates
+│       ├── base.html / layout.html # Base templates
+│       ├── auth/                   # Login/Register pages
 │       ├── dashboard/              # Dashboard page
 │       ├── scan/                   # Scan configuration page
 │       ├── results/                # Scan results + reports
 │       ├── history/                # Scan history page
-│       ├── main/                   # Landing page (hero, stats, features, CTA)
+│       ├── main/                   # Landing page
 │       └── ml_admin/               # ML admin panel
+├── frontend/                       # Vite-based frontend (unused/WIP)
 ├── data/
 │   ├── database.db                 # SQLite database (dev)
 │   ├── ml_models/                  # Trained ML model files (.joblib)
@@ -93,21 +94,13 @@ sudarshan/
 │   ├── portswigger_scraper.py      # Scrape PortSwigger labs
 │   ├── portswigger_auto_trainer.py # Auto-train from scraped data
 │   ├── portswigger_complete_integration.py
-│   ├── train_ml_models.py          # Train ML false-positive classifier
-│   ├── generate_report_p1.py       # Project report generator (Part 1)
-│   ├── generate_report_p2.py       # Project report generator (Part 2)
-│   ├── generate_report_p3.py       # Project report generator (Part 3)
-│   └── generate_diagrams.py        # Architecture diagram generator
+│   └── train_ml_models.py          # Train ML false-positive classifier
 ├── tests/                          # pytest test suite
 │   ├── test_crawler_scanner.py
 │   ├── test_new_scanners.py
 │   └── test_smart_engine_integration.py
 ├── Dockerfile                      # Python 3.12-slim + gunicorn
 ├── docker-compose.yml              # web + worker + redis (3 services)
-├── railway.toml                    # Railway deployment config (primary)
-├── Procfile                        # Process definitions (web + worker)
-├── render.yaml                     # Render Blueprint (legacy, kept as backup)
-├── report_guidelines.txt           # College project report formatting rules
 ├── requirements.txt                # 46 Python dependencies
 └── .env                            # Environment variables
 ```
@@ -244,17 +237,6 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 2. **worker** — Celery worker (concurrency 2)
 3. **redis** — Redis 7 Alpine (password-protected)
 
-### Railway Deployment (Primary)
-- **Web service** — Docker-based, uses `Procfile` web process (gunicorn)
-- **Worker service** — Celery background worker via `Procfile` worker process
-- **Redis** — One-click Redis plugin (auto-sets `REDIS_URL`)
-- Auto-deploys on push to `main` branch
-- Health check at `/api/health`
-
-### Render Deployment (Legacy — `render.yaml`)
-- Kept as backup; 3-service config (web + worker + redis)
-- Can be removed once Railway is fully validated
-
 ### SSE Event Streaming
 - **Redis mode:** pub/sub on `scan:{id}:events` channel
 - **Threading mode:** in-memory queues with event history for late-joining clients
@@ -310,14 +292,6 @@ python run.py
 # Docker
 docker-compose up --build
 
-# Railway (auto-deploys from GitHub)
-# 1. Connect repo at railway.app
-# 2. Add Redis plugin
-# 3. Set env vars → Deploy
-
-# Render (legacy — auto-deploys from GitHub)
-# Push to main → Render picks up changes via render.yaml Blueprint
-
 # Celery worker (separate terminal)
 celery -A app.celery_app:celery worker --loglevel=info
 
@@ -326,20 +300,3 @@ pytest tests/ -v
 ```
 
 The app runs at `http://localhost:5000` by default.
-
----
-
-## UI Design System
-
-### Theme: "The Sentinel Aesthetic"
-- **Background:** Deep navy void (`#060611`)
-- **Primary accent:** Cyan (`#00e5ff`) for active states and CTAs
-- **Fonts:** Space Grotesk (headlines), Inter (body), JetBrains Mono (code/data)
-- **Styling:** Tailwind CSS (CDN) + custom CSS in `base.html`
-- **Effects:** Glassmorphism cards, neon text glow, ambient cyan shadows
-
-### Premium Navigation Effects (Landing Page)
-- **Nav links:** Glass pill hover background + glowing cyan underline with pulse animation + scale-up (1.05×)
-- **Sign In:** Cyan text glow + text-shadow on hover
-- **Get Started:** Continuous gradient shimmer sweep + cyan box-shadow glow
-- **Email sign-in buttons:** Gradient overlay + shimmer sweep + border glow + lift animation

@@ -158,31 +158,7 @@ The app will be available at `http://localhost:5000`.
 
 ---
 
-## 🚀 Deploy to Railway (Recommended)
-
-The simplest way to deploy Sudarshan to the cloud:
-
-1. **Sign up** at [railway.app](https://railway.app) with GitHub
-2. **New Project** → "Deploy from GitHub repo" → Select `sudarshan`
-3. **Add Redis** → Click "New" → "Database" → "Add Redis"
-4. **Set environment variables** in the Railway dashboard:
-   | Variable | Value |
-   |----------|-------|
-   | `DATABASE_URL` | Your Supabase PostgreSQL connection string |
-   | `SUPABASE_URL` | `https://xxxxx.supabase.co` |
-   | `SUPABASE_ANON_KEY` | Your Supabase anon key |
-   | `SUPABASE_SERVICE_KEY` | Your Supabase service key |
-   | `GROQ_API_KEY` | Your Groq API key (optional) |
-   | `SECRET_KEY` | Generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
-   | `FLASK_ENV` | `production` |
-   | `REDIS_URL` | Auto-filled from the Redis plugin |
-5. **Deploy** — Railway auto-deploys on every push to `main`
-
-> Railway provides **$5 free credit/month** — enough for hobby/demo usage with no cold starts.
-
----
-
-## 🐳 Docker (Local Development)
+## 🐳 Docker
 
 ```bash
 # Build and start all services
@@ -245,7 +221,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 | **Task Queue** | Celery + Redis |
 | **Reports** | fpdf2 (PDF) + Jinja2 (HTML) |
 | **Monitoring** | Prometheus |
-| **Deployment** | Railway / Docker + Gunicorn |
+| **Deployment** | Docker + docker-compose + Gunicorn |
 
 ---
 

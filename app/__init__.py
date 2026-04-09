@@ -4,8 +4,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
-from werkzeug.middleware.proxy_fix import ProxyFix
-from app.config import DevelopmentConfig, ProductionConfig
+from app.config import DevelopmentConfig
 from app.models.database import db, init_db
 import os
 import logging
@@ -26,17 +25,8 @@ def create_app(config=None):
     from dotenv import load_dotenv
     load_dotenv()
 
-    # Auto-detect production environment
-    if config is None:
-        flask_env = os.environ.get('FLASK_ENV', 'development')
-        config = ProductionConfig if flask_env == 'production' else DevelopmentConfig
-
     app = Flask(__name__)
-    app.config.from_object(config)
-
-    # Fix for Render/Heroku reverse proxy: trust X-Forwarded-* headers
-    # so Flask sees HTTPS correctly (required for SESSION_COOKIE_SECURE)
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    app.config.from_object(config or DevelopmentConfig)
 
     # Fix common Supabase/Heroku PostgreSQL URI issue:
     # They may provide 'postgres://' but SQLAlchemy requires 'postgresql://'
