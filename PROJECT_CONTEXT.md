@@ -84,7 +84,6 @@ sudarshan/
 │       ├── history/                # Scan history page
 │       ├── main/                   # Landing page
 │       └── ml_admin/               # ML admin panel
-├── frontend/                       # Vite-based frontend (unused/WIP)
 ├── data/
 │   ├── database.db                 # SQLite database (dev)
 │   ├── ml_models/                  # Trained ML model files (.joblib)

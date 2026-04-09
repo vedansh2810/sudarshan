@@ -367,7 +367,7 @@ class ScanManager:
                 for q in dead_queues:
                     try:
                         self.sse_queues[scan_id].remove(q)
-                    except:
+                    except Exception:
                         pass
 
         # Also push to in-memory queues even in Redis mode (for threading+Redis hybrid)

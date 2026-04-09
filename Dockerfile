@@ -17,9 +17,9 @@ COPY . .
 # Create data directories
 RUN mkdir -p data/reports data/ml_models logs
 
-# Default port (Render injects PORT env var automatically)
+# Default port
 ENV PORT=5000
 EXPOSE ${PORT}
 
-# Run with gunicorn — uses $PORT so Render can override it
+# Run with gunicorn
 CMD gunicorn -w 2 -b 0.0.0.0:${PORT} --timeout 120 run:app
