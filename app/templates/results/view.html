@@ -75,7 +75,7 @@
     {% set sev_colors = {'critical': '#ff2d55', 'high': '#ff6400', 'medium': '#ffb800', 'low': '#00d46a', 'info': '#3b82f6'} %}
     {% for v in vulnerabilities %}
     <div class="glass-card rounded-xl overflow-hidden border border-slate-800 animate-fade-in-up" style="animation-delay:{{ loop.index0 * 30 }}ms">
-      <button onclick="toggleVuln({{ loop.index0 }})" class="w-full p-5 flex items-center gap-4 text-left cursor-pointer bg-transparent border-0 text-white hover:bg-white/[0.02] transition-colors">
+      <button onclick="toggleVuln({{ loop.index0 }})" class="w-full p-5 flex items-center gap-4 text-left cursor-pointer bg-transparent border-0 text-white hover:bg-white/[0.02] transition-colors" aria-label="Toggle details for {{ v.name }}" aria-expanded="false" id="vuln-toggle-{{ loop.index0 }}">
         <span class="sev-badge shrink-0" style="color:{{ sev_colors[v.severity] }};background:{{ sev_colors[v.severity] }}15;border:1px solid {{ sev_colors[v.severity] }}50">{{ v.severity }}</span>
         <div class="flex-1 min-w-0">
           <p class="font-bold truncate">{{ v.name }}</p>
@@ -84,9 +84,9 @@
         {% if v.cvss_score %}
         <span class="text-sm font-bold font-mono px-2 py-1 rounded bg-white/5 text-slate-300">{{ v.cvss_score }}</span>
         {% endif %}
-        <span class="material-symbols-outlined text-slate-500 vuln-chevron-{{ loop.index0 }}">expand_more</span>
+        <span class="material-symbols-outlined text-slate-500 vuln-chevron" id="vuln-chevron-{{ loop.index0 }}">expand_more</span>
       </button>
-      <div class="p-5 pt-0 space-y-4 border-t border-slate-800 hidden vuln-detail-{{ loop.index0 }}">
+      <div class="px-5 space-y-4 border-t border-slate-800 vuln-detail" id="vuln-detail-{{ loop.index0 }}">
         {% if v.description %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Description</p><p class="text-sm text-slate-300 leading-relaxed">{{ v.description }}</p></div>{% endif %}
         {% if v.impact %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Impact</p><p class="text-sm text-slate-300 leading-relaxed">{{ v.impact }}</p></div>{% endif %}
         {% if v.parameter %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Parameter</p><code class="text-sm text-primary bg-primary/5 px-2 py-1 rounded font-mono">{{ v.parameter }}</code></div>{% endif %}
@@ -143,10 +143,12 @@
 {% block scripts %}
 <script>
 function toggleVuln(idx) {
-  const detail = document.querySelector('.vuln-detail-' + idx);
-  const chevron = document.querySelector('.vuln-chevron-' + idx);
-  detail.classList.toggle('hidden');
-  chevron.textContent = detail.classList.contains('hidden') ? 'expand_more' : 'expand_less';
+  const detail = document.getElementById('vuln-detail-' + idx);
+  const chevron = document.getElementById('vuln-chevron-' + idx);
+  const toggle = document.getElementById('vuln-toggle-' + idx);
+  const isOpen = detail.classList.toggle('open');
+  chevron.classList.toggle('rotated', isOpen);
+  if (toggle) toggle.setAttribute('aria-expanded', isOpen);
 }
 </script>
 {% endblock %}

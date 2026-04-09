@@ -186,15 +186,15 @@ def retrain_model():
         classifier = FalsePositiveClassifier()
 
         # Prepare data from labeled ScanAttempts
-        data = classifier.prepare_training_data()
-        if not data or len(data.get('X', [])) < 10:
+        X, y = classifier.prepare_data_from_db()
+        if X is None or len(X) < 10:
             return jsonify({
                 'error': 'Not enough labeled data for training (need at least 10 samples)',
-                'current_samples': len(data.get('X', [])) if data else 0,
+                'current_samples': len(X) if X is not None else 0,
             }), 400
 
         # Train
-        metrics = classifier.train(data['X'], data['y'])
+        metrics = classifier.train()
 
         # Save model
         import pathlib

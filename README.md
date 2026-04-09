@@ -20,7 +20,7 @@
 ## Features
 
 ### 🔍 Comprehensive Scanning
-- **16 Vulnerability Scanners** — SQL Injection, XSS, CSRF, SSRF, SSTI, XXE, Command Injection, Directory Traversal, JWT Attacks, Broken Auth, IDOR, Open Redirect, CORS Misconfig, Clickjacking, Security Headers, and more
+- **16 Vulnerability Scanners** — SQL Injection, XSS, CSRF, SSRF, SSTI, XXE, Command Injection, Directory Traversal, JWT Attacks, Broken Auth, IDOR, Open Redirect, CORS Misconfig, Clickjacking, Security Headers, and Directory Listing
 - **Multi-threaded Crawler** — Discovers URLs, forms, and injectable parameters automatically
 - **3 Scan Modes** — Safe, Balanced, and Aggressive profiles with tunable speed and depth
 - **Active & Passive Scanning** — Full vulnerability testing or headers-only analysis
@@ -71,8 +71,10 @@ sudarshan/
 │   │   └── vulnerabilities/      # 16 vulnerability scanner modules
 │   ├── routes/                   # Flask blueprints
 │   ├── utils/                    # Utility modules
+│   ├── static/                   # Local CSS & JS assets
 │   └── templates/                # Jinja2 HTML templates
 ├── data/                         # ML models, reports, PortSwigger KB
+├── scripts/                      # Report generation & training scripts
 ├── tests/                        # pytest test suite
 ├── Dockerfile
 ├── docker-compose.yml            # web + worker + redis
@@ -82,15 +84,14 @@ sudarshan/
 ### Scan Pipeline
 
 ```
-Phase 0  →  Connectivity check (HTTP GET target)
-Phase 1  →  Multi-threaded crawling (URLs, forms, parameters)
-Phase 1.5 →  AI Recon (tech stack, WAF, framework detection via LLM)
-Phase 2  →  Parallel vulnerability scanning (16 scanners via ThreadPoolExecutor)
-             ├─ Save findings to DB
-             ├─ AI analysis (OWASP mapping, CWE classification)
-             ├─ FP verification (ML + LLM combined verdict)
-             └─ Attack narrative generation
-Phase 3  →  Post-scan deep analysis of critical/high findings
+Phase 0    →  Connectivity check (HTTP GET target)
+Phase 1    →  Multi-threaded crawling (URLs, forms, parameters)
+Phase 1.5  →  AI Recon (tech stack, WAF, framework detection via LLM)
+Phase 2    →  Parallel vulnerability scanning (16 scanners via ThreadPoolExecutor)
+              ├─ Save findings to DB (batch-deduplicated)
+              ├─ AI analysis (OWASP mapping, CWE classification)
+              └─ Progress streaming via SSE
+Finalize   →  Score calculation, webhook triggers, cleanup
 ```
 
 ---

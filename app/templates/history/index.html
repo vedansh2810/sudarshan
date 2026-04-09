@@ -65,10 +65,13 @@
             <td class="px-6 py-5">
               <span class="status-pill w-fit
                 {% if s.status == 'running' %}bg-primary/20 text-primary border border-primary/30
-                {% elif s.status == 'complete' %}bg-emerald-500/20 text-emerald-500 border border-emerald-500/30
+                {% elif s.status == 'complete' or s.status == 'completed' %}bg-emerald-500/20 text-emerald-500 border border-emerald-500/30
                 {% elif s.status == 'error' %}bg-red-500/20 text-red-500 border border-red-500/30
-                {% else %}bg-amber-500/20 text-amber-500 border border-amber-500/30{% endif %}">
+                {% elif s.status == 'stopped' %}bg-red-400/20 text-red-400 border border-red-400/30
+                {% elif s.status == 'paused' %}bg-amber-500/20 text-amber-500 border border-amber-500/30
+                {% else %}bg-slate-500/20 text-slate-400 border border-slate-500/30{% endif %}">
                 {% if s.status == 'running' %}<span class="w-1 h-1 bg-primary rounded-full animate-pulse"></span>{% endif %}
+                {% if s.status == 'paused' %}<span class="w-1 h-1 bg-amber-500 rounded-full animate-pulse"></span>{% endif %}
                 {{ s.status }}
               </span>
             </td>
@@ -90,13 +93,13 @@
             <td class="px-6 py-5 text-right">
               <div class="flex items-center justify-end gap-2">
                 {% if s.status in ('running', 'paused') %}
-                <a href="/scan/{{ s.id }}/progress" class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-primary"><span class="material-symbols-outlined text-lg">monitoring</span></a>
+                <a href="/scan/{{ s.id }}/progress" class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-primary" aria-label="View scan progress"><span class="material-symbols-outlined text-lg">monitoring</span></a>
                 {% endif %}
-                <a href="/scan/{{ s.id }}/results" class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-primary"><span class="material-symbols-outlined text-lg">visibility</span></a>
-                <a href="/scan/{{ s.id }}/report/pdf" class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-white"><span class="material-symbols-outlined text-lg">download</span></a>
+                <a href="/scan/{{ s.id }}/results" class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-primary" aria-label="View scan results"><span class="material-symbols-outlined text-lg">visibility</span></a>
+                <a href="/scan/{{ s.id }}/report/pdf" class="p-1.5 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-white" aria-label="Download PDF report"><span class="material-symbols-outlined text-lg">download</span></a>
                 <form method="POST" action="/history/{{ s.id }}/delete" class="inline" onsubmit="return confirm('Delete scan #{{ s.id }}?')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button type="submit" class="p-1.5 hover:bg-red-500/10 rounded transition-colors text-slate-500 hover:text-red-500 cursor-pointer border-0 bg-transparent"><span class="material-symbols-outlined text-lg">delete</span></button>
+                  <button type="submit" class="p-1.5 hover:bg-red-500/10 rounded transition-colors text-slate-500 hover:text-red-500 cursor-pointer border-0 bg-transparent" aria-label="Delete scan"><span class="material-symbols-outlined text-lg">delete</span></button>
                 </form>
               </div>
             </td>

@@ -75,6 +75,11 @@ sudarshan/
 │   │   └── url_safety.py           # SSRF protection (IP validation)
 │   ├── monitoring/
 │   │   └── metrics.py              # Prometheus metrics
+│   ├── static/                     # Local static assets
+│   │   ├── css/
+│   │   │   └── sudarshan.css       # Shared stylesheet (10KB)
+│   │   └── js/
+│   │       └── utils.js            # Shared JS utilities (1KB)
 │   └── templates/                  # Jinja2 HTML templates
 │       ├── base.html / layout.html # Base templates
 │       ├── auth/                   # Login/Register pages
@@ -88,19 +93,29 @@ sudarshan/
 │   ├── database.db                 # SQLite database (dev)
 │   ├── ml_models/                  # Trained ML model files (.joblib)
 │   ├── portswigger_knowledge/      # PortSwigger KB (JSON)
+│   │   ├── portswigger_knowledge.json  # Full KB (~2MB)
+│   │   ├── lab_index.json              # 269 labs index (77KB)
+│   │   └── payloads_by_category.json   # 2197 payloads (765KB)
+│   ├── report_diagrams/            # Generated report diagram assets
 │   └── reports/                    # Generated HTML/PDF reports
 ├── scripts/                        # Utility scripts
 │   ├── portswigger_scraper.py      # Scrape PortSwigger labs
 │   ├── portswigger_auto_trainer.py # Auto-train from scraped data
 │   ├── portswigger_complete_integration.py
-│   └── train_ml_models.py          # Train ML false-positive classifier
+│   ├── train_ml_models.py          # Train ML false-positive classifier
+│   ├── generate_diagrams.py        # Generate report diagram assets
+│   ├── generate_report_p1.py       # Report generation (part 1)
+│   ├── generate_report_p2.py       # Report generation (part 2)
+│   └── generate_report_p3.py       # Report generation (part 3)
 ├── tests/                          # pytest test suite
-│   ├── test_crawler_scanner.py
-│   ├── test_new_scanners.py
-│   └── test_smart_engine_integration.py
+│   ├── test_crawler_scanner.py     # Crawler & scanner integration tests
+│   ├── test_new_scanners.py        # Vulnerability scanner tests
+│   ├── test_smart_engine_integration.py  # AI/SmartEngine tests
+│   ├── test_multi_tenancy.py       # Organization & multi-tenant tests
+│   └── test_stateless_scan_manager.py    # Scan manager state tests
 ├── Dockerfile                      # Python 3.12-slim + gunicorn
 ├── docker-compose.yml              # web + worker + redis (3 services)
-├── requirements.txt                # 46 Python dependencies
+├── requirements.txt                # Python dependencies
 └── .env                            # Environment variables
 ```
 
@@ -131,21 +146,24 @@ sudarshan/
 
 ---
 
-## Scan Pipeline (3 Phases)
+## Scan Pipeline
 
 ```
-Phase 0: Connectivity Check  →  HTTP GET target, verify reachability
-Phase 1: Crawling           →  Multi-threaded crawler discovers URLs & injectable points
-Phase 1.5: AI Recon         →  LLM analyzes HTTP response to detect tech stack, WAF, framework
-Phase 2: Vulnerability Scan →  16 scanners run in parallel via ThreadPoolExecutor
-         ├─ For each finding:
-         │   ├─ Save to DB (Vulnerability.create)
-         │   ├─ AI Analysis (LLM explains finding, OWASP mapping, CWE)
-         │   ├─ FP Verification (ML classifier + LLM combined, 40%/60% weight)
-         │   └─ Attack Narrative (LLM generates detailed exploitation writeup)
-         └─ Progress streaming via SSE (Redis pub/sub or in-memory queues)
-Phase 3: Post-Scan AI       →  Deep analysis of critical/high findings, attack narratives
+Phase 0:   Connectivity Check  →  HTTP GET target, verify reachability
+Phase 1:   Crawling            →  Multi-threaded crawler discovers URLs & injectable points
+Phase 1.5: AI Recon            →  LLM analyzes HTTP response to detect tech stack, WAF, framework
+Phase 2:   Vulnerability Scan  →  16 scanners run in parallel via ThreadPoolExecutor
+           ├─ For each finding:
+           │   ├─ Save to DB (Vulnerability.create_batch — deduplicated)
+           │   └─ AI Analysis (LLM explains finding, OWASP mapping, CWE)
+           └─ Progress streaming via SSE (Redis pub/sub or in-memory queues)
+Finalize:  Score calculation, duration, severity counts → DB
+           Webhook triggers (best-effort)
+           Redis state cleanup
 ```
+
+> **Note:** Phase 3 (Post-Scan AI Deep Analysis) was removed to eliminate database session
+> poisoning issues and reduce false-positive noise. AI analysis now runs inline during Phase 2.
 
 ### Supported Vulnerability Checks (16)
 `sql_injection`, `xss`, `csrf`, `security_headers`, `directory_traversal`, `command_injection`, `idor`, `directory_listing`, `xxe`, `ssrf`, `open_redirect`, `cors`, `clickjacking`, `ssti`, `jwt_attacks`, `broken_auth`
@@ -227,6 +245,9 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 - Organization management
 - Webhook CRUD
 
+### Legacy API v1 (`/api/`)
+Basic scan endpoints (maintained for backward compatibility).
+
 ---
 
 ## Infrastructure
@@ -253,6 +274,7 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 |----------|---------|---------|
 | Framework | Flask | 3.0.0 |
 | ORM | Flask-SQLAlchemy | 3.1.1 |
+| Migrations | Flask-Migrate | 4.0.7 |
 | DB Driver | psycopg (3.x) | ≥3.1.0 |
 | Auth | gotrue + PyJWT | ≥2.0.0 / ≥2.8.0 |
 | Task Queue | celery[redis] | 5.4.0 |
@@ -260,8 +282,10 @@ API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
 | ML | scikit-learn + pandas | ≥1.3.2 / ≥2.1.4 |
 | Scraping | requests + beautifulsoup4 | 2.31.0 / 4.12.2 |
 | Reports | fpdf2 | 2.7.6 |
+| CSRF | Flask-WTF | 1.2.1 |
 | Rate Limiting | Flask-Limiter | 3.8.0 |
 | Monitoring | prometheus-client | ≥0.19.0 |
+| Testing | pytest + pytest-cov | 7.4.3 / 4.1.0 |
 
 ---
 

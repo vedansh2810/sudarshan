@@ -1,0 +1,286 @@
+/* ====================================================================
+   SUDARSHAN — Custom Design System CSS
+   Extracted from inline <style> for cacheability & performance.
+   Tailwind CDN still handles utility classes.
+   ==================================================================== */
+
+/* ===== WCAG AA Contrast Fix (#18) ===== */
+/* Default text-slate-500 (#64748b) on bg #060611 = 3.47:1 (FAIL)
+   Override to #8494a7 on bg #060611 = 6.18:1 (PASS AA normal text) */
+.text-slate-500 { color: #8494a7; }
+
+/* ===== Base Resets ===== */
+html { background: #060611; }
+* { box-sizing: border-box; }
+body {
+  background: #060611;
+  color: #e2e8f0;
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #060611; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+/* ===== Glass & Neon ===== */
+.glass-card {
+  background: rgba(13,13,36,0.8);
+  border: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 40px rgba(0,229,255,0.03);
+  transition: box-shadow 0.3s, border-color 0.3s;
+}
+.glass-card:hover {
+  box-shadow: 0 4px 40px rgba(0,229,255,0.08);
+  border-color: rgba(255,255,255,0.1);
+}
+.neon-text { text-shadow: 0 0 20px rgba(0,229,255,0.5), 0 0 40px rgba(0,229,255,0.2); }
+.neon-glow { box-shadow: 0 0 20px rgba(0,229,255,0.15), 0 0 60px rgba(0,229,255,0.05); }
+
+/* ===== Badges & Pills ===== */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 9999px;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  font-family: 'JetBrains Mono', monospace;
+}
+.score-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  font-weight: 800; font-family: 'JetBrains Mono', monospace; font-size: 14px;
+}
+.sev-badge {
+  display: inline-flex; padding: 3px 10px; border-radius: 6px;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ===== Terminal / Log ===== */
+.log-viewer {
+  background: #030308;
+  border: 1px solid rgba(0,229,255,0.1);
+  border-radius: 12px; padding: 16px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  overflow-y: auto; line-height: 1.6;
+}
+.loading-page {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 300px; gap: 16px; color: #8494a7;
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(255,255,255,0.06);
+  border-top-color: #00e5ff; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Skip Navigation (#19) ===== */
+.skip-nav {
+  position: absolute; top: -100%; left: 16px;
+  background: #00e5ff; color: #060611;
+  padding: 8px 16px; border-radius: 0 0 8px 8px;
+  font-weight: 700; font-size: 14px; z-index: 9999;
+  transition: top 0.2s ease;
+}
+.skip-nav:focus { top: 0; }
+
+/* ===== Premium Navigation Bar Effects ===== */
+@keyframes nav-underline-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(0,229,255,0.4); opacity: 1; }
+  50% { box-shadow: 0 0 12px rgba(0,229,255,0.8); opacity: 0.85; }
+}
+@keyframes cta-shimmer {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(200%); }
+}
+
+.nav-link {
+  position: relative;
+  padding: 6px 14px; border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-link::before {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 8px;
+  background: rgba(0,229,255,0.06);
+  border: 1px solid rgba(0,229,255,0.08);
+  backdrop-filter: blur(8px);
+  opacity: 0; transition: opacity 0.3s ease;
+}
+.nav-link:hover::before { opacity: 1; }
+.nav-link::after {
+  content: ''; position: absolute;
+  bottom: 2px; left: 50%;
+  transform: translateX(-50%) scaleX(0);
+  width: 60%; height: 2px;
+  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+  border-radius: 2px;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-link:hover::after {
+  transform: translateX(-50%) scaleX(1);
+  animation: nav-underline-pulse 1.5s ease-in-out infinite;
+}
+.nav-link:hover { color: #fff !important; transform: scale(1.05); }
+
+.nav-signin { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.nav-signin:hover {
+  color: #00e5ff !important;
+  text-shadow: 0 0 12px rgba(0,229,255,0.5), 0 0 30px rgba(0,229,255,0.2);
+  transform: scale(1.05);
+}
+
+.nav-cta { position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.nav-cta::after {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transform: translateX(-100%);
+  animation: cta-shimmer 3s ease-in-out infinite;
+}
+.nav-cta:hover {
+  box-shadow: 0 0 20px rgba(0,229,255,0.4), 0 0 50px rgba(0,229,255,0.1);
+  transform: scale(1.05) translateY(-1px);
+}
+
+/* ===== Login / Auth Pages ===== */
+.login-bg {
+  background: #060611;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(0,229,255,0.03) 0%, transparent 50%),
+    repeating-linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px, transparent 60px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 60px);
+}
+.login-card {
+  background: rgba(13,13,36,0.9);
+  border: 1px solid rgba(0,229,255,0.1);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 0 60px rgba(0,229,255,0.05);
+}
+
+/* ===== Password Toggle (#11) ===== */
+.password-wrapper { position: relative; }
+.password-toggle {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: #64748b; padding: 4px;
+  transition: color 0.2s;
+  display: flex; align-items: center; justify-content: center;
+}
+.password-toggle:hover { color: #00e5ff; }
+
+/* ===== Form Controls ===== */
+input[type='range'] { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+input[type='range']::-webkit-slider-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; }
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 20px; width: 20px; border-radius: 50%;
+  background: #00e5ff; border: 3px solid #060611;
+  box-shadow: 0 0 10px rgba(0,229,255,0.4); margin-top: -7px;
+  transition: box-shadow 0.2s;
+}
+input[type='range']::-webkit-slider-thumb:hover { box-shadow: 0 0 20px rgba(0,229,255,0.6); }
+input[type='range']::-moz-range-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; border: none; }
+input[type='range']::-moz-range-thumb {
+  height: 20px; width: 20px; border-radius: 50%;
+  background: #00e5ff; border: 3px solid #060611;
+  box-shadow: 0 0 10px rgba(0,229,255,0.4);
+}
+input[type='date'] { color-scheme: dark; }
+input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1) brightness(0.7); cursor: pointer; }
+select { color-scheme: dark; }
+
+a { text-decoration: none; }
+
+/* ===== Flash Messages ===== */
+.flash-msg { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; font-weight: 600; }
+.flash-msg.info { background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3); color: #00e5ff; }
+.flash-msg.error, .flash-msg.danger { background: rgba(255,45,85,0.1); border: 1px solid rgba(255,45,85,0.3); color: #ff2d55; }
+.flash-msg.success { background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); color: #00d46a; }
+.flash-msg.warning { background: rgba(255,184,0,0.1); border: 1px solid rgba(255,184,0,0.3); color: #ffb800; }
+
+/* ===== Premium Email Sign-In Button Hover ===== */
+@keyframes btn-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@keyframes btn-border-glow {
+  0%, 100% { border-color: rgba(0,229,255,0.3); }
+  50% { border-color: rgba(0,229,255,0.7); }
+}
+.btn-email-signin {
+  position: relative; overflow: hidden;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+.btn-email-signin::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(0,229,255,0.12) 0%, rgba(168,85,247,0.08) 50%, rgba(0,229,255,0.12) 100%);
+  opacity: 0; transition: opacity 0.35s ease; z-index: -1;
+}
+.btn-email-signin::after {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.15), rgba(255,255,255,0.08), transparent);
+  transform: translateX(-100%); z-index: -1;
+}
+.btn-email-signin:hover::before { opacity: 1; }
+.btn-email-signin:hover::after { animation: btn-shimmer 0.8s ease-out forwards; }
+.btn-email-signin:hover {
+  border-color: rgba(0,229,255,0.6) !important;
+  box-shadow:
+    0 0 20px rgba(0,229,255,0.25),
+    0 0 50px rgba(0,229,255,0.08),
+    0 4px 15px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(0,229,255,0.15);
+  transform: translateY(-3px);
+  text-shadow: 0 0 12px rgba(0,229,255,0.4);
+  color: #00e5ff;
+}
+.btn-email-signin:active {
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(0,229,255,0.2), 0 2px 8px rgba(0,0,0,0.3);
+  transition-duration: 0.1s;
+}
+.btn-email-signin .btn-email-icon {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), filter 0.35s ease;
+}
+.btn-email-signin:hover .btn-email-icon {
+  transform: translateX(4px) scale(1.15);
+  filter: drop-shadow(0 0 6px rgba(0,229,255,0.5));
+}
+.btn-email-signin:focus-visible {
+  outline: 2px solid #00e5ff; outline-offset: 2px;
+  box-shadow: 0 0 20px rgba(0,229,255,0.3);
+}
+
+/* ===== Vulnerability Detail Toggle Transition (#13) ===== */
+.vuln-detail {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease,
+              padding 0.3s ease;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.vuln-detail.open {
+  max-height: 2000px;
+  opacity: 1;
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+}
+.vuln-chevron {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.vuln-chevron.rotated {
+  transform: rotate(180deg);
+}

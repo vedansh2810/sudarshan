@@ -378,9 +378,18 @@ class ScanManager:
                 except queue.Full:
                     pass
 
-        # Persist log events to DB
+        # Persist log events to DB (with defensive session handling)
         if event_type == 'log':
-            Scan.add_log(scan_id, data, log_level)
+            try:
+                Scan.add_log(scan_id, data, log_level)
+            except Exception as db_err:
+                # Session may be poisoned from a previous error — rollback and retry once
+                try:
+                    from app.models.database import db as _db
+                    _db.session.rollback()
+                    Scan.add_log(scan_id, data, log_level)
+                except Exception:
+                    logger.warning(f"Failed to persist log to DB: {db_err}")
 
     def _calculate_score(self, findings):
         if not findings:
@@ -489,6 +498,7 @@ class ScanManager:
                 else:
                     self._emit(scan_id, 'log', '[-] DVWA authentication failed — scanning without auth', 'warning')
 
+            crawler = None  # Initialize before conditional to avoid NameError in run_scanner closure
             if target_reachable:
                 crawler = Crawler(
                     target_url=target_url,
@@ -637,7 +647,7 @@ class ScanManager:
                     try:
                         # Create a fresh session and copy cookies/headers
                         # instead of deepcopy which breaks transport adapters
-                        if crawler.session:
+                        if crawler and crawler.session:
                             scanner_session = requests_lib.Session()
                             scanner_session.cookies.update(crawler.session.cookies)
                             scanner_session.headers.update(crawler.session.headers)
@@ -727,113 +737,26 @@ class ScanManager:
                 if findings:
                     Vulnerability.create_batch(scan_id, findings)
 
-            # Phase 3: Post-scan AI Analysis (batched — decoupled from scan loop)
-            if ctx['findings'] and not ctx.get('stopped'):
-                try:
-                    from app.ai.smart_engine import get_smart_engine
-                    _engine = get_smart_engine()
-                    self._emit(scan_id, 'log', '[*] Phase 3: AI analysis of findings...', 'info')
-
-                    import json as _json
-                    from app.models.database import db as _db, VulnerabilityModel
-
-                    ai_updates = 0
-                    for finding in ctx['findings']:
-                        if ctx.get('stopped'):
-                            break
-                        try:
-                            vuln_info = {
-                                'vuln_type': finding['vuln_type'],
-                                'severity': finding['severity'],
-                                'url': finding['affected_url'],
-                                'parameter': finding['parameter'],
-                                'payload': finding['payload'],
-                                'evidence': finding.get('description', ''),
-                            }
-
-                            latest = VulnerabilityModel.query.filter_by(
-                                scan_id=scan_id,
-                                vuln_type=finding['vuln_type'],
-                                affected_url=finding['affected_url']
-                            ).order_by(VulnerabilityModel.id.desc()).first()
-
-                            if not latest:
-                                continue
-
-                            # Step 1: LLM analysis + remediation enrichment
-                            try:
-                                ai_result = ai_analyze(vuln_info)
-                                if ai_result:
-                                    latest.ai_analysis = _json.dumps(ai_result)
-                            except Exception:
-                                pass
-
-                            try:
-                                if finding.get('remediation'):
-                                    enriched = _engine.enrich_remediation(
-                                        finding['vuln_type'], finding['remediation']
-                                    )
-                                    if enriched:
-                                        latest.remediation = enriched
-                            except Exception:
-                                pass
-
-                            # Step 2: ML false-positive verification
-                            try:
-                                fp_features = {
-                                    'payload_length': len(finding.get('payload', '') or ''),
-                                    'payload_special_chars': sum(1 for c in (finding.get('payload', '') or '') if c in "'\"<>;&|`$(){}[]\\"),
-                                    'payload_has_script_tag': 1 if '<script' in (finding.get('payload', '') or '').lower() else 0,
-                                    'payload_has_sql_keyword': 1 if any(kw in (finding.get('payload', '') or '').upper() for kw in ('SELECT', 'UNION', 'DROP', 'SLEEP')) else 0,
-                                    'payload_has_encoding': 1 if '%' in (finding.get('payload', '') or '') else 0,
-                                    'baseline_status': 200, 'baseline_length': 0,
-                                    'test_status': 200, 'test_length': 0,
-                                    'response_time': 0, 'status_changed': 0,
-                                    'length_diff': 0, 'length_ratio': 0,
-                                    'error_count': 0, 'has_db_error': 0,
-                                    'payload_reflected': 0,
-                                }
-                                verdict, confidence, reasoning = _engine.verify_finding(
-                                    vuln_info, fp_features
-                                )
-                                if verdict == 'false_positive':
-                                    latest.likely_false_positive = True
-                                    latest.fp_confidence = confidence
-                                    self._emit(scan_id, 'log',
-                                        f'[*] AI: {finding["name"]} marked as likely false positive ({confidence:.0%})',
-                                        'info')
-                                elif verdict == 'needs_manual_review':
-                                    latest.fp_confidence = confidence
-                            except Exception:
-                                pass
-
-                            # Step 3: Attack narrative (critical/high only)
-                            if finding.get('severity') in ('critical', 'high'):
-                                try:
-                                    narrative = _engine.generate_attack_narrative(vuln_info)
-                                    if narrative:
-                                        latest.ai_narrative = _json.dumps(narrative)
-                                except Exception:
-                                    pass
-
-                            ai_updates += 1
-                        except Exception:
-                            pass
-
-                    # Single batch commit for all AI updates
-                    if ai_updates:
-                        _db.session.commit()
-                        self._emit(scan_id, 'log',
-                            f'[+] AI analysis complete: {ai_updates} findings enriched',
-                            'success')
-                except Exception as deep_err:
-                    logger.debug(f'Post-scan AI analysis skipped: {deep_err}')
-
             self._finalize(ctx, discovered_urls)
 
         except Exception as e:
+            # Rollback any poisoned session before attempting DB writes
+            try:
+                from app.models.database import db as _db
+                _db.session.rollback()
+            except Exception:
+                pass
             self._emit(scan_id, 'log', f'[-] Fatal error: {str(e)}', 'error')
-            Scan.update_status(scan_id, 'error')
+            try:
+                Scan.update_status(scan_id, 'error')
+            except Exception:
+                # If session is still unusable, rollback and retry once
+                try:
+                    from app.models.database import db as _db2
+                    _db2.session.rollback()
+                    Scan.update_status(scan_id, 'error')
+                except Exception:
+                    logger.error(f'Failed to mark scan {scan_id} as error')
             ctx['status'] = 'error'
             if scan_id in self.active_scans:
                 del self.active_scans[scan_id]
@@ -850,16 +773,19 @@ class ScanManager:
         medium = sum(1 for f in findings if f.get('severity') == 'medium')
         low = sum(1 for f in findings if f.get('severity') in ('low', 'info'))
 
-        Scan.complete(
-            scan_id=scan_id,
-            score=score,
-            duration=duration,
-            total_urls=len(discovered_urls),
-            critical=critical,
-            high=high,
-            medium=medium,
-            low=low
-        )
+        try:
+            Scan.complete(
+                scan_id=scan_id,
+                score=score,
+                duration=duration,
+                total_urls=len(discovered_urls),
+                critical=critical,
+                high=high,
+                medium=medium,
+                low=low
+            )
+        except Exception as e:
+            logger.error(f'_finalize: Scan.complete failed: {e}')
 
         status = 'completed' if not ctx.get('stopped') else 'stopped'
         ctx['status'] = status

@@ -133,9 +133,6 @@ class BaseScanner:
         self._baseline_cache[cache_key] = baseline
         return baseline
 
-    def scan(self, target_url, injectable_points):
-        raise NotImplementedError
-
     # ── ML Data Collection ───────────────────────────────────────────
 
     def _extract_features(self, baseline_response, test_response, payload):

@@ -144,7 +144,12 @@
     for (const { msg, level, ts } of logBuffer) {
       const div = document.createElement('div');
       div.className = 'py-0.5 ' + (level === 'error' ? 'text-red-400' : level === 'warning' ? 'text-amber-400' : level === 'success' ? 'text-emerald-400' : 'text-slate-400');
-      div.innerHTML = '<span class="text-slate-600 mr-2">[' + (ts || '—') + ']</span>' + msg;
+      // Fix #24: Use textContent instead of innerHTML to prevent XSS
+      const tsSpan = document.createElement('span');
+      tsSpan.className = 'text-slate-600 mr-2';
+      tsSpan.textContent = '[' + (ts || '\u2014') + ']';
+      div.appendChild(tsSpan);
+      div.appendChild(document.createTextNode(msg));
       frag.appendChild(div);
     }
     logBuffer = [];
@@ -157,11 +162,30 @@
     sec.style.display = '';
     const list = document.getElementById('findings-list');
     const color = sevColors[data.severity] || '#3b82f6';
+    // Fix #25: Use DOM API instead of innerHTML to prevent XSS
     const div = document.createElement('div');
     div.className = 'flex items-center gap-4 p-3 rounded-lg bg-white/[0.02] border border-slate-800 animate-slide-in';
-    div.innerHTML = '<span class="sev-badge" style="color:' + color + ';background:' + color + '15;border:1px solid ' + color + '50">' + data.severity + '</span>' +
-      '<div class="flex-1 min-w-0"><p class="text-sm font-semibold text-white truncate">' + data.name + '</p>' +
-      '<p class="text-xs text-slate-500 font-mono truncate">' + (data.url || '') + '</p></div>';
+
+    const badge = document.createElement('span');
+    badge.className = 'sev-badge';
+    badge.style.cssText = 'color:' + color + ';background:' + color + '15;border:1px solid ' + color + '50';
+    badge.textContent = sanitizeHTML(data.severity);
+
+    const details = document.createElement('div');
+    details.className = 'flex-1 min-w-0';
+
+    const nameP = document.createElement('p');
+    nameP.className = 'text-sm font-semibold text-white truncate';
+    nameP.textContent = data.name;
+
+    const urlP = document.createElement('p');
+    urlP.className = 'text-xs text-slate-500 font-mono truncate';
+    urlP.textContent = data.url || '';
+
+    details.appendChild(nameP);
+    details.appendChild(urlP);
+    div.appendChild(badge);
+    div.appendChild(details);
     list.appendChild(div);
   }
 

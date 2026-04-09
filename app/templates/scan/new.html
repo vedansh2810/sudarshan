@@ -80,7 +80,8 @@
           'security_headers': 'verified_user', 'directory_traversal': 'folder_open',
           'command_injection': 'terminal', 'idor': 'person_search',
           'directory_listing': 'list', 'xxe': 'data_object', 'ssrf': 'cloud_sync',
-          'open_redirect': 'exit_to_app', 'cors': 'public', 'clickjacking': 'mouse'
+          'open_redirect': 'exit_to_app', 'cors': 'public', 'clickjacking': 'mouse',
+          'ssti': 'integration_instructions', 'jwt_attacks': 'key', 'broken_auth': 'lock_open'
         } %}
         {% for check in checks %}
         <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all has-[:checked]:border-primary/30 has-[:checked]:bg-primary/5 has-[:checked]:text-white border-slate-800 bg-white/[0.01] text-slate-500 hover:border-slate-600">
@@ -94,7 +95,7 @@
 
     <!-- Authorization -->
     <label class="flex items-start gap-3 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 cursor-pointer">
-      <input type="checkbox" name="authorized" value="1" class="mt-0.5 accent-primary w-4 h-4 cursor-pointer">
+      <input type="checkbox" name="authorized" value="1" id="auth-confirm" class="mt-0.5 accent-primary w-4 h-4 cursor-pointer" aria-label="I confirm authorization to scan this target">
       <div>
         <p class="text-sm font-bold text-white flex items-center gap-2">
           <span class="material-symbols-outlined text-amber-500 text-lg">gavel</span>
