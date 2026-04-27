@@ -67,6 +67,28 @@ def create_app(config=None):
     os.makedirs(os.path.join(PROJECT_ROOT, 'data', 'ml_models'), exist_ok=True)
     os.makedirs(os.path.join(PROJECT_ROOT, 'logs'), exist_ok=True)
 
+    # ── Probe database connectivity before init ─────────────────────────
+    # If DATABASE_URL points to a dead/paused PostgreSQL (e.g. Supabase),
+    # fall back to local SQLite so the app still starts for development.
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    if 'sqlite' not in db_uri:
+        from sqlalchemy import create_engine
+        probe_engine = create_engine(db_uri, pool_pre_ping=True)
+        try:
+            with probe_engine.connect() as conn:
+                pass  # Connection works
+        except Exception as db_err:
+            from app.config import PROJECT_ROOT
+            sqlite_uri = 'sqlite:///' + os.path.join(PROJECT_ROOT, 'data', 'database.db')
+            logging.warning(
+                f"PostgreSQL unreachable ({type(db_err).__name__}). "
+                f"Falling back to SQLite: {sqlite_uri}"
+            )
+            app.config['SQLALCHEMY_DATABASE_URI'] = sqlite_uri
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
+        finally:
+            probe_engine.dispose()
+
     # Initialize database (create tables)
     with app.app_context():
         # Import ML and advanced models so their tables are created
@@ -76,11 +98,14 @@ def create_app(config=None):
         from app.models.organization import OrganizationModel, OrgMembershipModel  # noqa: F401
         init_db()
 
-        # Fix 3: Recover scans orphaned by previous server crash
-        from app.models.scan import Scan
-        recovered = Scan.recover_orphaned(max_age_minutes=10)
-        if recovered:
-            app.logger.warning(f"Recovered {recovered} orphaned scan(s) from previous run")
+        # Recover scans orphaned by previous server crash
+        try:
+            from app.models.scan import Scan
+            recovered = Scan.recover_orphaned(max_age_minutes=10)
+            if recovered:
+                app.logger.warning(f"Recovered {recovered} orphaned scan(s) from previous run")
+        except Exception as e:
+            app.logger.warning(f"Orphan recovery skipped: {e}")
 
     # Register blueprints
     from app.routes.main import main_bp
