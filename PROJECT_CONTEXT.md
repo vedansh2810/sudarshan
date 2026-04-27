@@ -7,7 +7,6 @@
 **AI/LLM:** Groq API (Llama 3.3 70B Versatile)  
 **ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)  
 **Task Queue:** Celery + Redis (optional — falls back to in-process threading)  
-**Deployment:** Docker + Nginx + Gunicorn + Let's Encrypt (Oracle Cloud / VPS)  
 
 ---
 
@@ -89,13 +88,6 @@ sudarshan/
 │       ├── history/                # Scan history page
 │       ├── main/                   # Landing page
 │       └── ml_admin/               # ML admin panel
-├── deploy/                         # Production deployment (Oracle Cloud)
-│   ├── deploy.sh                   # One-command redeploy script
-│   ├── setup-server.sh             # First-time VM setup (Docker, firewall, fail2ban)
-│   ├── setup-ssl.sh                # Let's Encrypt SSL automation
-│   └── nginx/
-│       ├── nginx.conf              # HTTPS reverse proxy (rate-limited, gzip, HSTS)
-│       └── nginx-nossl.conf        # HTTP-only (pre-SSL bootstrap)
 ├── data/
 │   ├── database.db                 # SQLite database (dev)
 │   ├── ml_models/                  # Trained ML model files (.joblib)
@@ -120,10 +112,6 @@ sudarshan/
 │   ├── test_smart_engine_integration.py  # AI/SmartEngine tests
 │   ├── test_multi_tenancy.py       # Organization & multi-tenant tests
 │   └── test_stateless_scan_manager.py    # Scan manager state tests
-├── Dockerfile                      # Python 3.12-slim + gunicorn
-├── docker-compose.yml              # Dev: web + worker + redis (3 services)
-├── docker-compose.prod.yml         # Prod: nginx + web + worker + redis + certbot (5 services)
-├── .env.production                 # Production env template (placeholder values only)
 ├── requirements.txt                # Python dependencies
 └── .env                            # Environment variables
 ```
@@ -259,26 +247,6 @@ Basic scan endpoints (maintained for backward compatibility).
 
 ---
 
-## Infrastructure
-
-### Docker Stack — Development (3 services)
-1. **web** — Flask + gunicorn (2 workers, port 5000)
-2. **worker** — Celery worker (concurrency 2)
-3. **redis** — Redis 7 Alpine (password-protected)
-
-### Docker Stack — Production (5 services)
-1. **nginx** — Reverse proxy, static file serving, rate limiting, gzip, security headers
-2. **web** — Flask + gunicorn (port 5000, internal only)
-3. **worker** — Celery worker (concurrency 2, dedicated container)
-4. **redis** — Redis 7 Alpine (password-protected, 256 MB max memory, LRU eviction)
-5. **certbot** — Let's Encrypt auto-renewal (12h renewal loop)
-
-### Production Deployment (Oracle Cloud)
-- **Server setup**: `deploy/setup-server.sh` — installs Docker, configures iptables firewall (ports 80/443), enables fail2ban and unattended-upgrades
-- **SSL setup**: `deploy/setup-ssl.sh <domain> <email>` — obtains Let's Encrypt cert via webroot challenge, switches Nginx to HTTPS config
-- **Redeploy**: `deploy/deploy.sh` — pulls latest code, rebuilds containers, restarts services, prunes old images
-- **Nginx**: TLS 1.2/1.3, HSTS, security headers (X-Frame-Options, X-Content-Type-Options, CSP), 10r/s rate limiting, static file caching (30d)
-
 ### SSE Event Streaming
 - **Redis mode:** pub/sub on `scan:{id}:events` channel
 - **Threading mode:** in-memory queues with event history for late-joining clients
@@ -325,21 +293,16 @@ Basic scan endpoints (maintained for backward compatibility).
 | `GROQ_MODEL` | LLM model name | Optional (default: llama-3.3-70b-versatile) |
 | `FLASK_ENV` | development / production | Optional |
 | `ALLOW_LOCAL_TARGETS` | Allow scanning localhost/private IPs | Optional |
-| `REDIS_PASSWORD` | Redis authentication password (production) | Production |
-| `SERVER_NAME` | Domain or public IP (production) | Production |
 
 ---
 
 ## How to Run
 
 ```bash
-# Development (auto-activates venv)
+# Start the application (auto-activates venv)
 python run.py
 
-# Docker
-docker-compose up --build
-
-# Celery worker (separate terminal)
+# (Optional) Celery worker in a separate terminal
 celery -A app.celery_app:celery worker --loglevel=info
 
 # Tests
