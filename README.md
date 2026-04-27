@@ -49,7 +49,7 @@
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 sudarshan/
@@ -105,7 +105,7 @@ Finalize   →  Score calculation, webhook triggers, cleanup
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.12+
@@ -168,7 +168,7 @@ The app will be available at `http://localhost:5000`.
 
 ---
 
-## 🐳 Docker
+## Docker
 
 ### Development
 
@@ -207,7 +207,7 @@ sudo ./deploy/setup-ssl.sh your-domain.com your@email.com
 
 ---
 
-## 🔌 API
+## API
 
 ### Web Routes
 
@@ -243,7 +243,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -260,7 +260,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 
 ---
 
-## 🔐 Security Features
+## Security Features
 
 - **CSRF Protection** — Flask-WTF with 1-hour token validity
 - **Rate Limiting** — Flask-Limiter (200/day, 50/hour default)
@@ -270,7 +270,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 
 ---
 
-## 📝 Supported Vulnerability Checks
+## Supported Vulnerability Checks
 
 | # | Vulnerability | Description |
 |---|--------------|-------------|
@@ -293,7 +293,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -303,7 +303,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 
 ---
 
-## 📄 License
+## License
 
 This project is for educational and authorized security testing purposes only. Always obtain proper authorization before scanning any target.
 
