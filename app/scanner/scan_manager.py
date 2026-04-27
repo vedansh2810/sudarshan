@@ -39,7 +39,6 @@ from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
 
 from app.monitoring.metrics import track_scan_started, track_scan_completed, track_vulnerability
-from app.ai.analyzer import analyze_vulnerability as ai_analyze
 
 logger = logging.getLogger(__name__)
 

@@ -141,55 +141,6 @@ class DVWAAuth:
             return False
     
     @staticmethod
-    def get_security_level(session, base_url):
-        """
-        Read the current DVWA security level without changing it.
-        
-        Args:
-            session: Authenticated requests.Session
-            base_url: DVWA base URL
-        
-        Returns:
-            Current security level string ('low', 'medium', 'high', 'impossible') or None
-        """
-        base_url = base_url.rstrip('/')
-        
-        try:
-            security_url = f"{base_url}/security.php"
-            response = session.get(security_url, timeout=10)
-            
-            if response.status_code != 200:
-                return None
-            
-            # Method 1: Parse the HTML to find the current level
-            # DVWA shows the current level in a text element on the page
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Look for text that says "Security level is currently ..."
-            page_text = soup.get_text().lower()
-            for level in ['impossible', 'high', 'medium', 'low']:
-                if f'currently {level}' in page_text or f'security level: {level}' in page_text:
-                    return level
-            
-            # Method 2: Check the security cookie directly
-            security_cookie = session.cookies.get('security')
-            if security_cookie and security_cookie.lower() in ['low', 'medium', 'high', 'impossible']:
-                return security_cookie.lower()
-            
-            # Method 3: Check for the selected option in the dropdown
-            select = soup.find('select', {'name': 'security'})
-            if select:
-                selected = select.find('option', selected=True)
-                if selected:
-                    return selected.get('value', '').lower()
-            
-            return None
-        
-        except Exception as e:
-            print(f"[!] Error reading DVWA security level: {e}")
-            return None
-    
-    @staticmethod
     def is_dvwa_target(url):
         """
         Check if a URL looks like a DVWA instance.
@@ -232,48 +183,3 @@ class DVWAAuth:
         
         return False
 
-
-# Example usage / testing
-if __name__ == "__main__":
-    print("="*60)
-    print("DVWA Authentication Helper Test")
-    print("="*60)
-    
-    dvwa_url = "http://localhost:8888"
-    
-    # Test 1: Login
-    print("\n[*] Testing DVWA login...")
-    session = DVWAAuth.login(dvwa_url)
-    
-    if session:
-        print("[+] Login successful!")
-        
-        # Test 2: Check if we can access a protected page
-        print("\n[*] Testing access to vulnerability page...")
-        test_url = f"{dvwa_url}/vulnerabilities/sqli/"
-        response = session.get(test_url, timeout=10)
-        
-        if response.status_code == 200 and 'login.php' not in response.url:
-            print("[+] Successfully accessed vulnerability page")
-        else:
-            print("[!] Failed to access vulnerability page (may need login)")
-        
-        # Test 3: Set security level
-        print("\n[*] Testing security level setting...")
-        DVWAAuth.set_security_level(session, dvwa_url, 'low')
-        
-    else:
-        print("[!] Login failed - check if DVWA is running at", dvwa_url)
-    
-    # Test 4: Detection
-    print("\n[*] Testing DVWA detection...")
-    test_urls = [
-        "http://localhost:8888",
-        "http://localhost:8888/dvwa",
-        "http://example.com",
-        "http://dvwa.local"
-    ]
-    
-    for url in test_urls:
-        is_dvwa = DVWAAuth.is_dvwa_target(url)
-        print(f"  {url}: {'DVWA' if is_dvwa else 'Not DVWA'}")

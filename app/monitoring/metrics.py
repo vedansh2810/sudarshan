@@ -29,11 +29,6 @@ try:
         ['severity', 'type'],
     )
 
-    ml_predictions = Counter(
-        'sudarshan_ml_predictions',
-        'ML model predictions',
-        ['result'],  # true_positive, false_positive, pass_through
-    )
 
     active_scans = Gauge(
         'sudarshan_active_scans',
@@ -69,10 +64,6 @@ def track_vulnerability(severity, vuln_type):
         vulnerabilities_found.labels(severity=severity, type=vuln_type).inc()
 
 
-def track_ml_prediction(result):
-    """Record an ML prediction result."""
-    if PROMETHEUS_AVAILABLE:
-        ml_predictions.labels(result=result).inc()
 
 
 # ── Endpoint function ────────────────────────────────────────────────
