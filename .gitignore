@@ -18,8 +18,9 @@ env/
 *.swp
 *.swo
 
-# Environment
+# Environment (NEVER commit secrets)
 .env
+.env.local
 
 # Data (local dev data should not be committed)
 data/
