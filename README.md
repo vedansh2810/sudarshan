@@ -8,6 +8,7 @@
     <a href="#architecture">Architecture</a> •
     <a href="#quick-start">Quick Start</a> •
     <a href="#api">API</a> •
+    <a href="#docker">Docker</a> •
     <a href="#license">License</a>
   </p>
 </p>
@@ -72,9 +73,20 @@ sudarshan/
 │   ├── utils/                    # Utility modules
 │   ├── static/                   # Local CSS & JS assets
 │   └── templates/                # Jinja2 HTML templates
+├── deploy/                       # Production deployment (Oracle Cloud)
+│   ├── deploy.sh                 # One-command update/redeploy script
+│   ├── setup-server.sh           # First-time VM provisioning
+│   ├── setup-ssl.sh              # Let's Encrypt SSL automation
+│   └── nginx/                    # Nginx reverse proxy configs
+│       ├── nginx.conf            # HTTPS config (rate-limited)
+│       └── nginx-nossl.conf      # HTTP-only (pre-SSL bootstrap)
 ├── data/                         # ML models, reports, PortSwigger KB
 ├── scripts/                      # Report generation & training scripts
 ├── tests/                        # pytest test suite
+├── Dockerfile
+├── docker-compose.yml            # Dev: web + worker + redis
+├── docker-compose.prod.yml       # Prod: nginx + web + worker + redis + certbot
+├── .env.production               # Production env template (no secrets)
 └── requirements.txt
 ```
 
@@ -142,10 +154,10 @@ ALLOW_LOCAL_TARGETS=true
 ### Run
 
 ```bash
-# Start the application
+# Development
 python run.py
 
-# (Optional) Start Celery worker in a separate terminal
+# With Celery worker (separate terminal)
 celery -A app.celery_app:celery worker --loglevel=info
 
 # Run tests
@@ -153,6 +165,45 @@ pytest tests/ -v
 ```
 
 The app will be available at `http://localhost:5000`.
+
+---
+
+## 🐳 Docker
+
+### Development
+
+```bash
+# Build and start all services (dev)
+docker compose up --build
+
+# Services:
+#   web    → Flask + Gunicorn (port 5000)
+#   worker → Celery worker (concurrency 2)
+#   redis  → Redis 7 Alpine (port 6379)
+```
+
+### Production (Oracle Cloud / VPS)
+
+```bash
+# 1. Provision the server (Ubuntu 22.04/24.04 VM — run once)
+sudo ./deploy/setup-server.sh
+
+# 2. Configure environment
+cp .env.production .env
+nano .env   # fill in all values
+
+# 3. Start with HTTP first
+cp deploy/nginx/nginx-nossl.conf deploy/nginx/nginx.conf
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 4. Enable HTTPS (requires domain pointed at your server)
+sudo ./deploy/setup-ssl.sh your-domain.com your@email.com
+
+# 5. Subsequent deploys
+./deploy/deploy.sh
+```
+
+**Production services:** Nginx (reverse proxy + static files) → Gunicorn (Flask) → Celery worker → Redis → Certbot (auto SSL renewal)
 
 ---
 
@@ -205,6 +256,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 | **Task Queue** | Celery + Redis |
 | **Reports** | fpdf2 (PDF) + Jinja2 (HTML) |
 | **Monitoring** | Prometheus |
+| **Deployment** | Docker + Nginx + Gunicorn + Let's Encrypt |
 
 ---
 
