@@ -1,0 +1,55 @@
+# ── Git & VCS ────────────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Python artifacts ─────────────────────────────────────────────────────────
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+*.egg
+dist/
+build/
+venv/
+.venv/
+env/
+.pytest_cache/
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Environment secrets (injected at runtime, never baked into image) ────────
+.env
+.env.local
+.env.*
+
+# ── Local dev data (not needed in image; use volumes instead) ────────────────
+data/database.db
+data/reports/
+data/report_diagrams/
+logs/
+
+# ── OS files ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Docker meta ──────────────────────────────────────────────────────────────
+docker-compose.yml
+docker-compose.override.yml
+Dockerfile
+
+# ── Documentation (not needed in runtime image) ─────────────────────────────
+README.md
+PROJECT_CONTEXT.md
+
+# ── Gemini / AI tool data ────────────────────────────────────────────────────
+.gemini/
+
+# ── Test files ───────────────────────────────────────────────────────────────
+tests/
+
+# ── Scripts (utility, not needed in runtime) ─────────────────────────────────
+scripts/

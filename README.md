@@ -53,7 +53,7 @@
 
 ```
 sudarshan/
-├── run.py                        # Entry point (auto-activates venv)
+├── run.py                        # Entry point (Flask dev server, port 5000)
 ├── app/
 │   ├── __init__.py               # Flask app factory
 │   ├── config.py                 # Config classes (Dev/Prod)
@@ -73,20 +73,13 @@ sudarshan/
 │   ├── utils/                    # Utility modules
 │   ├── static/                   # Local CSS & JS assets
 │   └── templates/                # Jinja2 HTML templates
-├── deploy/                       # Production deployment (Oracle Cloud)
-│   ├── deploy.sh                 # One-command update/redeploy script
-│   ├── setup-server.sh           # First-time VM provisioning
-│   ├── setup-ssl.sh              # Let's Encrypt SSL automation
-│   └── nginx/                    # Nginx reverse proxy configs
-│       ├── nginx.conf            # HTTPS config (rate-limited)
-│       └── nginx-nossl.conf      # HTTP-only (pre-SSL bootstrap)
 ├── data/                         # ML models, reports, PortSwigger KB
 ├── scripts/                      # Report generation & training scripts
 ├── tests/                        # pytest test suite
-├── Dockerfile
-├── docker-compose.yml            # Dev: web + worker + redis
-├── docker-compose.prod.yml       # Prod: nginx + web + worker + redis + certbot
-├── .env.production               # Production env template (no secrets)
+├── Dockerfile                    # Multi-stage Docker build (Python 3.12 slim)
+├── docker-compose.yml            # web + worker + redis
+├── .dockerignore                 # Build context exclusions
+├── .env.example                  # Env template (no secrets)
 └── requirements.txt
 ```
 
@@ -170,40 +163,49 @@ The app will be available at `http://localhost:5000`.
 
 ## Docker
 
-### Development
+### Quick Start
 
 ```bash
-# Build and start all services (dev)
+# 1. Copy the environment template and fill in your values
+cp .env.example .env
+
+# 2. Build and start all services
 docker compose up --build
 
 # Services:
-#   web    → Flask + Gunicorn (port 5000)
-#   worker → Celery worker (concurrency 2)
-#   redis  → Redis 7 Alpine (port 6379)
+#   web    → Flask + Gunicorn on port 5000 (4 workers, 2 threads each)
+#   worker → Celery worker (concurrency 2, async scan execution)
+#   redis  → Redis 7 Alpine on port 6379 (broker, SSE, rate-limiter)
 ```
 
-### Production (Oracle Cloud / VPS)
+### Common Commands
 
 ```bash
-# 1. Provision the server (Ubuntu 22.04/24.04 VM — run once)
-sudo ./deploy/setup-server.sh
+# Start web only (no Celery — falls back to in-process threading)
+docker compose up --build web
 
-# 2. Configure environment
-cp .env.production .env
-nano .env   # fill in all values
+# Run in detached mode
+docker compose up -d --build
 
-# 3. Start with HTTP first
-cp deploy/nginx/nginx-nossl.conf deploy/nginx/nginx.conf
-docker compose -f docker-compose.prod.yml up -d --build
+# View logs
+docker compose logs -f web
 
-# 4. Enable HTTPS (requires domain pointed at your server)
-sudo ./deploy/setup-ssl.sh your-domain.com your@email.com
+# Stop and remove everything (including volumes)
+docker compose down -v
 
-# 5. Subsequent deploys
-./deploy/deploy.sh
+# Rebuild after code changes
+docker compose up --build --force-recreate
 ```
 
-**Production services:** Nginx (reverse proxy + static files) → Gunicorn (Flask) → Celery worker → Redis → Certbot (auto SSL renewal)
+### Standalone Docker (without Compose)
+
+```bash
+# Build the image
+docker build -t sudarshan .
+
+# Run with your .env file (SQLite fallback if no PostgreSQL)
+docker run -p 5000:5000 --env-file .env sudarshan
+```
 
 ---
 
@@ -256,7 +258,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 | **Task Queue** | Celery + Redis |
 | **Reports** | fpdf2 (PDF) + Jinja2 (HTML) |
 | **Monitoring** | Prometheus |
-| **Deployment** | Docker + Nginx + Gunicorn + Let's Encrypt |
+| **Deployment** | Docker Compose + Gunicorn |
 
 ---
 
