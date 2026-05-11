@@ -78,6 +78,34 @@ class Crawler:
             ''  # fragment
         ))
 
+    @staticmethod
+    def _is_valid_extracted_url(url_str):
+        """Filter out JS code fragments that regex accidentally matches as URLs.
+
+        React/SPA bundles contain minified JS with URL-like patterns
+        (e.g. `.concat(s.absoluteURL||s.to)`) that are NOT real paths.
+        """
+        # Reject excessively long paths (real routes rarely exceed 200 chars)
+        if len(url_str) > 200:
+            return False
+        # Reject URLs containing JS syntax artifacts
+        js_artifacts = [
+            '%7B', '%7D', '%5B', '%5D',  # URL-encoded { } [ ]
+            '.concat(', 'arguments[', 'function ', 'return ',
+            'void ', '===', '!==',
+            'useContext', 'createElement', 'prototype',
+            '=>', '?arguments', '%3E%3D',
+        ]
+        url_lower = url_str.lower()
+        for artifact in js_artifacts:
+            if artifact.lower() in url_lower:
+                return False
+        # Reject URLs with excessive percent-encoding (>15% of chars)
+        pct_count = url_str.count('%')
+        if len(url_str) > 10 and pct_count / len(url_str) > 0.15:
+            return False
+        return True
+
     # ── Robots.txt ───────────────────────────────────────────────────
 
     def _parse_robots(self):
@@ -265,6 +293,8 @@ class Crawler:
                         for js_url in re.findall(pattern, js_text, re.IGNORECASE):
                             # Skip data URIs, fragments, and template literals
                             if js_url.startswith(('data:', 'javascript:', '#', '${')):
+                                continue
+                            if not self._is_valid_extracted_url(js_url):
                                 continue
                             full_url = urljoin(base_url, js_url)
                             if self._is_same_domain(full_url):

@@ -22,6 +22,10 @@ class BaseScanner:
         self._last_request_time = 0  # Track when last request was sent
         self._baseline_cache = {}     # Cache baselines per URL
 
+        # SPA detection flag — set by ScanManager when AI recon detects
+        # a React/Vue/Angular app. Scanners use this to skip futile tests.
+        self.is_spa_target = False
+
         # Response similarity tracking for anti-false-positive detection
         self._response_hashes = {}  # url -> list of response hashes
 

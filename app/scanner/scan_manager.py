@@ -610,6 +610,22 @@ class ScanManager:
                 logger.debug(f'AI reconnaissance skipped: {recon_err}')
                 self._emit(scan_id, 'log', '[*] AI Recon: Skipped (LLM unavailable)', 'info')
 
+            # Phase 1.6: SPA Detection — adjust scan strategy for SPAs
+            is_spa = False
+            if target_context:
+                tech_list = [t.lower() for t in target_context.get('technologies', [])]
+                framework = (target_context.get('framework') or '').lower()
+                spa_indicators = ('react', 'vue', 'angular', 'next', 'nuxt', 'svelte', 'gatsby')
+                if any(spa in framework for spa in spa_indicators):
+                    is_spa = True
+                if any(spa in ' '.join(tech_list) for spa in spa_indicators):
+                    is_spa = True
+            ctx['is_spa'] = is_spa
+            if is_spa:
+                self._emit(scan_id, 'log',
+                    '[*] SPA detected — adjusting scan strategy '
+                    '(skip directory brute-force, focus on API endpoints)', 'info')
+
             # Phase 2: Vulnerability Scanning
             if ctx['scan_mode'] == 'active':
                 self._emit(scan_id, 'log', '[+] Phase 2: Active vulnerability scanning...', 'info')
@@ -660,6 +676,8 @@ class ScanManager:
                         # Enable ML data collection
                         scanner.collect_ml_data = True
                         scanner.current_scan_id = scan_id
+                        # Propagate SPA detection flag to scanner
+                        scanner.is_spa_target = ctx.get('is_spa', False)
                         if check_name in ('security_headers', 'cors', 'clickjacking'):
                             findings = scanner.scan(target_url, [])
                         else:

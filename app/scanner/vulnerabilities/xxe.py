@@ -317,12 +317,17 @@ class XXEScanner(BaseScanner):
         """Scan for XXE vulnerabilities across all injectable points.
 
         Only tests endpoints that are likely to accept XML input.
+        Skips base URL on SPA targets (they never accept XML).
         """
         self.findings = []
         seen = set()
 
-        # Test the base URL itself (for APIs that accept XML)
-        self._scan_url(target_url, {'name': 'xml_body'}, seen)
+        # Only test the base URL if its path suggests API/XML endpoint
+        # and the target is not an SPA (React/Vue/Angular)
+        if not getattr(self, 'is_spa_target', False):
+            parsed = urlparse(target_url)
+            if any(p in parsed.path.lower() for p in self.XML_URL_PATTERNS):
+                self._scan_url(target_url, {'name': 'xml_body'}, seen)
 
         for point in injectable_points:
             if isinstance(point, dict) and point.get('type') == 'form':
@@ -337,11 +342,25 @@ class XXEScanner(BaseScanner):
         return self.findings
 
     def _scan_url(self, url, point, seen):
-        """Test a single URL with all XXE payloads."""
+        """Test a single URL with all XXE payloads.
+
+        Performs a lightweight POST probe first — if the endpoint
+        returns 405 (Method Not Allowed), all payloads are skipped.
+        """
         key = url
         if key in seen:
             return
         seen.add(key)
+
+        # Pre-check: does endpoint accept POST with XML content type?
+        probe_resp = self._request(
+            'POST', url,
+            data='<?xml version="1.0"?><probe/>',
+            headers={'Content-Type': 'application/xml'},
+        )
+        if probe_resp and probe_resp.status_code == 405:
+            logger.debug(f'XXE: Skipping {url} — POST not allowed (405)')
+            return
 
         for payload_set in self._get_xxe_payloads():
             result = self._test_xxe(url, point, payload_set)

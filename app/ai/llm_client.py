@@ -16,27 +16,59 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
-    """Simple token-bucket rate limiter for Groq API."""
+    """Token-aware rate limiter for Groq API with concurrency control.
 
-    def __init__(self, max_calls=28, period=60):
+    Enforces three limits simultaneously:
+      1. Request count (max_calls per period) — prevents RPM exhaustion
+      2. Token budget (max_tokens per period) — prevents TPM exhaustion
+      3. Concurrency (semaphore) — limits parallel LLM calls
+    """
+
+    def __init__(self, max_calls=28, period=60, max_tokens=10000, max_concurrent=2):
         self.max_calls = max_calls
         self.period = period
+        self.max_tokens = max_tokens
         self._calls = []
+        self._tokens = []  # list of (timestamp, token_count)
         self._lock = threading.Lock()
+        self._semaphore = threading.Semaphore(max_concurrent)
 
-    def acquire(self):
-        """Block until a request slot is available."""
+    def acquire(self, estimated_tokens=0):
+        """Block until a request slot is available, respecting token budget."""
+        self._semaphore.acquire()
         with self._lock:
             now = time.time()
-            # Remove expired timestamps
+            # Prune expired entries
             self._calls = [t for t in self._calls if now - t < self.period]
+            self._tokens = [(t, c) for t, c in self._tokens if now - t < self.period]
+
+            # Check call count limit
             if len(self._calls) >= self.max_calls:
                 sleep_time = self.period - (now - self._calls[0])
                 if sleep_time > 0:
-                    logger.debug(f"Rate limit: sleeping {sleep_time:.1f}s")
+                    logger.debug(f"Rate limit (RPM): sleeping {sleep_time:.1f}s")
                     time.sleep(sleep_time)
-                self._calls = [t for t in self._calls if time.time() - t < self.period]
+                now = time.time()
+                self._calls = [t for t in self._calls if now - t < self.period]
+                self._tokens = [(t, c) for t, c in self._tokens if now - t < self.period]
+
+            # Check token budget
+            if estimated_tokens > 0:
+                used_tokens = sum(c for _, c in self._tokens)
+                if used_tokens + estimated_tokens > self.max_tokens and self._tokens:
+                    sleep_time = self.period - (now - self._tokens[0][0])
+                    if sleep_time > 0:
+                        logger.debug(f"Rate limit (tokens): sleeping {min(sleep_time, 15):.1f}s "
+                                     f"({used_tokens}+{estimated_tokens} > {self.max_tokens})")
+                        time.sleep(min(sleep_time, 15))
+
             self._calls.append(time.time())
+            if estimated_tokens > 0:
+                self._tokens.append((time.time(), estimated_tokens))
+
+    def release(self):
+        """Release the concurrency semaphore after a request completes."""
+        self._semaphore.release()
 
 
 class ResponseCache:
@@ -117,12 +149,16 @@ class LLMClient:
             self._groq_client = None
 
     def _groq_generate(self, prompt, context=None):
-        """Call Groq API."""
+        """Call Groq API with token-aware rate limiting."""
         self._init_groq()
         if not self._groq_client:
             raise RuntimeError("Groq client not available")
 
-        self._rate_limiter.acquire()
+        # Estimate token count: ~4 chars per token for English text
+        total_chars = len(prompt) + len(context or '')
+        estimated_tokens = max(total_chars // 4, 100)
+
+        self._rate_limiter.acquire(estimated_tokens=estimated_tokens)
 
         messages = []
         if context:
@@ -151,6 +187,8 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Groq API error: {e}")
             raise
+        finally:
+            self._rate_limiter.release()
 
     def generate(self, prompt, context=None, use_cache=True):
         """Generate text using Groq LLM.

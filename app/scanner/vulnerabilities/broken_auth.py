@@ -94,9 +94,17 @@ class BrokenAuthScanner(BaseScanner):
     # ── Login page discovery ─────────────────────────────────────────
 
     def _find_login_pages(self, target_url, injectable_points):
-        """Find login forms in crawled pages."""
+        """Find login forms in crawled pages.
+
+        On SPA targets, compares each response against the homepage hash
+        to avoid treating the catch-all SPA shell as a login page.
+        """
         login_pages = []
         checked_urls = set()
+
+        # Get homepage baseline for SPA catch-all detection
+        homepage_resp = self._request('GET', target_url)
+        homepage_hash = self._get_response_hash(homepage_resp) if homepage_resp else None
 
         # Check common login paths
         common_paths = [
@@ -120,6 +128,10 @@ class BrokenAuthScanner(BaseScanner):
 
             resp = self._request('GET', url)
             if not resp or resp.status_code >= 400:
+                continue
+
+            # Skip if response is identical to homepage (SPA catch-all)
+            if homepage_hash and self._get_response_hash(resp) == homepage_hash:
                 continue
 
             text = resp.text or ''

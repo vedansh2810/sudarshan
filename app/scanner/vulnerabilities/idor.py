@@ -1,7 +1,10 @@
 import re
+import logging
 from urllib.parse import urlparse, parse_qs
 from difflib import SequenceMatcher
 from app.scanner.vulnerabilities.base import BaseScanner
+
+logger = logging.getLogger(__name__)
 
 class IDORScanner(BaseScanner):
     """Insecure Direct Object Reference detection"""
@@ -157,14 +160,38 @@ class DirectoryListingScanner(BaseScanner):
 
     def scan(self, target_url, injectable_points):
         self.findings = []
+
+        # Skip entirely on SPA targets — all paths return the SPA shell
+        if getattr(self, 'is_spa_target', False):
+            logger.debug('DirectoryListingScanner: Skipping — SPA target detected')
+            return self.findings
+
         parsed = urlparse(target_url)
         base = f"{parsed.scheme}://{parsed.netloc}"
+
+        # Canary: request a path that definitely doesn't exist.
+        # If the server returns 200 for this, it's a catch-all (SPA/custom 404).
+        canary_url = base + '/sudarshan_nonexistent_dir_probe_7x9k2/'
+        canary_resp = self._request('GET', canary_url)
+        canary_hash = self._get_response_hash(canary_resp) if canary_resp else None
+        canary_length = len(canary_resp.text) if canary_resp and canary_resp.text else 0
 
         for directory in self.COMMON_DIRS:
             test_url = base + directory
             response = self._request('GET', test_url)
             
             if response and response.status_code == 200:
+                # Skip if response matches the canary (SPA catch-all / custom 404)
+                if canary_hash:
+                    resp_hash = self._get_response_hash(response)
+                    if resp_hash == canary_hash:
+                        continue
+
+                # Also skip if response length is very close to canary (within 5%)
+                resp_len = len(response.text) if response.text else 0
+                if canary_length > 0 and abs(resp_len - canary_length) / max(canary_length, 1) < 0.05:
+                    continue
+
                 if self._is_directory_listing(response.text):
                     self.findings.append({
                         'vuln_type': 'directory_listing',
