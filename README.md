@@ -8,7 +8,6 @@
     <a href="#architecture">Architecture</a> •
     <a href="#quick-start">Quick Start</a> •
     <a href="#api">API</a> •
-    <a href="#docker">Docker</a> •
     <a href="#license">License</a>
   </p>
 </p>
@@ -76,9 +75,6 @@ sudarshan/
 ├── data/                         # ML models, reports, PortSwigger KB
 ├── scripts/                      # Report generation & training scripts
 ├── tests/                        # pytest test suite
-├── Dockerfile                    # Multi-stage Docker build (Python 3.12 slim)
-├── docker-compose.yml            # web + worker + redis
-├── .dockerignore                 # Build context exclusions
 ├── .env.example                  # Env template (no secrets)
 └── requirements.txt
 ```
@@ -161,54 +157,6 @@ The app will be available at `http://localhost:5000`.
 
 ---
 
-## Docker
-
-### Quick Start
-
-```bash
-# 1. Copy the environment template and fill in your values
-cp .env.example .env
-
-# 2. Build and start all services
-docker compose up --build
-
-# Services:
-#   web    → Flask + Gunicorn on port 5000 (4 workers, 2 threads each)
-#   worker → Celery worker (concurrency 2, async scan execution)
-#   redis  → Redis 7 Alpine on port 6379 (broker, SSE, rate-limiter)
-```
-
-### Common Commands
-
-```bash
-# Start web only (no Celery — falls back to in-process threading)
-docker compose up --build web
-
-# Run in detached mode
-docker compose up -d --build
-
-# View logs
-docker compose logs -f web
-
-# Stop and remove everything (including volumes)
-docker compose down -v
-
-# Rebuild after code changes
-docker compose up --build --force-recreate
-```
-
-### Standalone Docker (without Compose)
-
-```bash
-# Build the image
-docker build -t sudarshan .
-
-# Run with your .env file (SQLite fallback if no PostgreSQL)
-docker run -p 5000:5000 --env-file .env sudarshan
-```
-
----
-
 ## API
 
 ### Web Routes
@@ -258,7 +206,7 @@ curl http://localhost:5000/api/v2/scans/{scan_id}/vulnerabilities \
 | **Task Queue** | Celery + Redis |
 | **Reports** | fpdf2 (PDF) + Jinja2 (HTML) |
 | **Monitoring** | Prometheus |
-| **Deployment** | Docker Compose + Gunicorn |
+| **Deployment** | Gunicorn |
 
 ---
 

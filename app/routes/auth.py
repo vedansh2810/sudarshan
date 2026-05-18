@@ -1,6 +1,14 @@
 """Authentication routes using Supabase Auth.
-Supabase handles user registration and login; Flask manages the session."""
+Supabase handles user registration and login; Flask manages the session.
+
+Security hardening (v2.1):
+- Session fixation protection: session is regenerated on every login
+- Origin validation on CSRF-exempt callback endpoint
+- Tightened rate limiting on auth callback (10/min)
+- Login timestamp for session auditing
+"""
 import logging
+from datetime import datetime, timezone
 import requests as http_requests
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, current_app, jsonify)
@@ -36,6 +44,28 @@ def _verify_supabase_token(access_token):
     return None
 
 
+def _validate_request_origin():
+    """Validate Origin/Referer header for CSRF-exempt endpoints.
+
+    Since /auth/callback is @csrf.exempt (required because the client-side
+    Supabase JS SDK posts the token), we validate the Origin header manually
+    to prevent cross-origin CSRF attacks.
+
+    Returns True if the request is safe (same-origin or no Origin header).
+    """
+    origin = request.headers.get('Origin') or ''
+    if not origin:
+        # Requests without Origin header (e.g. same-origin, non-browser clients)
+        # are allowed; Referer can be checked as a fallback
+        referer = request.headers.get('Referer') or ''
+        if not referer:
+            return True  # No origin info — likely server-to-server or same-origin
+        origin = referer
+
+    server_origin = request.host_url.rstrip('/')
+    return origin.startswith(server_origin)
+
+
 @auth_bp.route('/login')
 def login():
     if 'user_id' in session:
@@ -56,10 +86,26 @@ def register():
 
 @auth_bp.route('/auth/callback', methods=['POST'])
 @csrf.exempt
-@limiter.limit("30 per minute")
+@limiter.limit("10 per minute")
 def auth_callback():
     """Receives Supabase access token from client-side auth, verifies it,
-    and creates a Flask session."""
+    and creates a Flask session.
+
+    Security:
+    - Rate limited to 10/min (brute-force defense)
+    - Origin header validated (CSRF protection for exempt endpoint)
+    - Session regenerated on login (session fixation protection)
+    - Authentication timestamp recorded for auditing
+    """
+    # ── Origin validation (replaces CSRF for this exempt endpoint) ───────
+    if not _validate_request_origin():
+        logger.warning(
+            f"Auth callback rejected: invalid origin "
+            f"(Origin={request.headers.get('Origin')}, "
+            f"IP={request.remote_addr})"
+        )
+        return jsonify({'error': 'Invalid request origin'}), 403
+
     data = request.get_json(silent=True)
     if not data or 'access_token' not in data:
         return jsonify({'error': 'Missing access_token'}), 400
@@ -70,7 +116,8 @@ def auth_callback():
         # Verify the token server-side
         supabase_user_data = _verify_supabase_token(access_token)
         if not supabase_user_data:
-            return jsonify({'error': 'Invalid token'}), 401
+            # Generic error message to prevent account enumeration
+            return jsonify({'error': 'Authentication failed'}), 401
 
         # Create a simple namespace object for get_or_create_from_supabase
         class SupabaseUser:
@@ -84,12 +131,20 @@ def auth_callback():
         # Find or create local user record
         local_user = User.get_or_create_from_supabase(supabase_user)
         if not local_user:
-            return jsonify({'error': 'Failed to create user record'}), 500
+            return jsonify({'error': 'Authentication failed'}), 500
 
-        # Set Flask session (same format as before — all existing routes work unchanged)
+        # ── Session fixation protection ──────────────────────────────────
+        # Clear old session data before setting new credentials.
+        # This prevents an attacker from pre-setting a session ID and
+        # having the victim authenticate into it.
+        session.clear()
+
+        # Set Flask session
         session['user_id'] = local_user['id']
         session['username'] = local_user['username']
         session['email'] = local_user['email']
+        session['_authenticated_at'] = datetime.now(timezone.utc).isoformat()
+        session['_last_validated'] = datetime.now(timezone.utc).isoformat()
 
         logger.info(f"User {local_user['username']} authenticated via Supabase")
         return jsonify({
@@ -99,6 +154,7 @@ def auth_callback():
 
     except Exception as e:
         logger.error(f"Supabase auth callback failed: {e}")
+        # Generic error message to prevent information leakage
         return jsonify({'error': 'Authentication failed'}), 401
 
 

@@ -37,8 +37,7 @@ node_modules/
 # Test cache
 .pytest_cache/
 
-# Docker
-docker-compose.override.yml
+
 
 # HuggingFace Spaces clone
 sudarshan/

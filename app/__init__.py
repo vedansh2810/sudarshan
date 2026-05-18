@@ -61,6 +61,15 @@ def create_app(config=None):
         format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
     )
 
+    # ── Session security: make all sessions permanent ────────────────────
+    # This activates PERMANENT_SESSION_LIFETIME (8h default).
+    # Without this, Flask sessions never expire server-side.
+    from flask import session as flask_session
+
+    @app.before_request
+    def _enforce_session_lifetime():
+        flask_session.permanent = True
+
     # Ensure data directories exist (use absolute paths based on project root)
     from app.config import PROJECT_ROOT
     os.makedirs(os.path.join(PROJECT_ROOT, 'data', 'reports'), exist_ok=True)

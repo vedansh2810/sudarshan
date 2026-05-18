@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 # Project root is two levels up from this file (app/config.py -> app/ -> project root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -21,8 +22,11 @@ class Config:
         'pool_pre_ping': True,   # Verify connections before use
     }
 
+    # ── Session security ──────────────────────────────────────────────────
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)  # Sessions expire after 8h
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = False   # HTTP allowed in development; overridden in ProductionConfig
     WTF_CSRF_TIME_LIMIT = 3600  # CSRF tokens valid for 1 hour
 
     # Redis + Celery (optional — falls back to in-process threading if unavailable)

@@ -7,7 +7,7 @@
 **AI/LLM:** Groq API (Llama 3.3 70B Versatile)  
 **ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)  
 **Task Queue:** Celery + Redis (optional — falls back to in-process threading)  
-**Deployment:** Docker Compose (Gunicorn + Redis + Celery) or local dev (venv + `run.py`)  
+**Deployment:** Gunicorn or local dev (venv + `run.py`)  
 
 ---
 
@@ -17,9 +17,7 @@
 sudarshan/
 ├── run.py                          # Entry point (Flask dev server, port 5000)
 ├── requirements.txt                # Python dependencies (45 lines)
-├── Dockerfile                      # Multi-stage Docker build (Python 3.12 slim)
-├── docker-compose.yml              # Dev/Prod: web + worker + redis
-├── .dockerignore                   # Build context exclusions
+
 ├── .env                            # Environment variables (Supabase, Groq, Redis)
 ├── .env.example                    # Safe env template (no secrets)
 ├── .gitignore                      # Git exclusions
@@ -394,21 +392,6 @@ Basic scan endpoints (maintained for backward compatibility).
 ---
 
 ## How to Run
-
-### Docker (recommended)
-
-```bash
-# Start all services (web + worker + redis)
-docker compose up --build
-
-# Or web only (no Celery — falls back to threading mode)
-docker compose up --build web
-
-# Stop and remove volumes
-docker compose down -v
-```
-
-### Local Development
 
 ```bash
 # Development (venv must be activated)
