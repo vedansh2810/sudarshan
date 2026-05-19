@@ -14,6 +14,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, current_app, jsonify)
 from app.models.user import User
 from app import limiter, csrf
+from app.monitoring.security_logger import security_log
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,11 @@ def auth_callback():
             f"(Origin={request.headers.get('Origin')}, "
             f"IP={request.remote_addr})"
         )
+        security_log.auth_failure(
+            ip=request.remote_addr,
+            reason='invalid_origin',
+            origin=request.headers.get('Origin')
+        )
         return jsonify({'error': 'Invalid request origin'}), 403
 
     data = request.get_json(silent=True)
@@ -117,6 +123,10 @@ def auth_callback():
         supabase_user_data = _verify_supabase_token(access_token)
         if not supabase_user_data:
             # Generic error message to prevent account enumeration
+            security_log.auth_failure(
+                ip=request.remote_addr,
+                reason='invalid_token'
+            )
             return jsonify({'error': 'Authentication failed'}), 401
 
         # Create a simple namespace object for get_or_create_from_supabase
@@ -148,6 +158,11 @@ def auth_callback():
         session['_last_validated'] = datetime.now(timezone.utc).isoformat()
 
         logger.info(f"User {local_user['username']} authenticated via Supabase")
+        security_log.auth_success(
+            user_id=local_user['id'],
+            username=local_user['username'],
+            ip=request.remote_addr
+        )
         return jsonify({
             'success': True,
             'redirect': url_for('dashboard.index')
@@ -155,6 +170,11 @@ def auth_callback():
 
     except Exception as e:
         logger.error(f"Supabase auth callback failed: {e}")
+        security_log.auth_failure(
+            ip=request.remote_addr,
+            reason='callback_exception',
+            error=type(e).__name__
+        )
         # Generic error message to prevent information leakage
         return jsonify({'error': 'Authentication failed'}), 401
 
@@ -175,6 +195,14 @@ def callback_handler():
 
 @auth_bp.route('/logout')
 def logout():
+    user_id = session.get('user_id')
+    username = session.get('username')
     session.clear()
+    if user_id:
+        security_log.logout(
+            user_id=user_id,
+            username=username,
+            ip=request.remote_addr
+        )
     flash('You have been logged out.', 'info')
     return redirect(url_for('main.index'))

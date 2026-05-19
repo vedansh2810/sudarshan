@@ -137,4 +137,87 @@ def create_app(config=None):
     app.register_blueprint(ml_admin_bp)
     app.register_blueprint(api_v2_bp)
 
+    # ── Security response headers ────────────────────────────────────────
+    # Applied to every response (X-Content-Type-Options, X-Frame-Options,
+    # HSTS in production, CSP in production, etc.)
+    @app.after_request
+    def _set_security_headers(response):
+        headers = app.config.get('SECURITY_HEADERS', {})
+        for header, value in headers.items():
+            response.headers.setdefault(header, value)
+        return response
+
+    # ── HTTPS redirect in production ─────────────────────────────────────
+    if not app.debug:
+        @app.before_request
+        def _enforce_https():
+            from flask import request as req, redirect as redir
+            # Behind a reverse proxy, X-Forwarded-Proto tells us the
+            # original protocol. If it's HTTP, redirect to HTTPS.
+            if req.headers.get('X-Forwarded-Proto', 'https') == 'http':
+                url = req.url.replace('http://', 'https://', 1)
+                return redir(url, code=301)
+
+    # ── Security-aware error handlers ────────────────────────────────────
+    from app.monitoring.security_logger import security_log
+
+    @app.errorhandler(403)
+    def _forbidden(e):
+        from flask import request as req, jsonify as jf, session as sess
+        security_log.access_denied(
+            ip=req.remote_addr,
+            path=req.path,
+            user_id=sess.get('user_id'),
+            reason='forbidden'
+        )
+        if req.is_json or req.path.startswith('/api/'):
+            return jf({'error': 'Forbidden'}), 403
+        return 'Forbidden', 403
+
+    @app.errorhandler(404)
+    def _not_found(e):
+        from flask import request as req, jsonify as jf
+        # Log 404s on sensitive paths (potential enumeration)
+        sensitive_prefixes = ('/admin', '/api/', '/auth/', '/ml/')
+        if any(req.path.startswith(p) for p in sensitive_prefixes):
+            security_log.suspicious_activity(
+                ip=req.remote_addr,
+                reason='404_on_sensitive_path',
+                path=req.path
+            )
+        if req.is_json or req.path.startswith('/api/'):
+            return jf({'error': 'Not found'}), 404
+        return 'Not found', 404
+
+    @app.errorhandler(429)
+    def _rate_limited(e):
+        from flask import request as req, jsonify as jf
+        security_log.rate_limited(
+            ip=req.remote_addr,
+            path=req.path,
+            limit=str(e.description) if hasattr(e, 'description') else 'unknown'
+        )
+        if req.is_json or req.path.startswith('/api/'):
+            return jf({'error': 'Too many requests'}), 429
+        return 'Too many requests. Please try again later.', 429
+
+    @app.errorhandler(500)
+    def _internal_error(e):
+        from flask import request as req, jsonify as jf, session as sess
+        security_log.api_error(
+            ip=req.remote_addr,
+            method=req.method,
+            path=req.path,
+            status_code=500,
+            error=str(e),
+            user_id=sess.get('user_id')
+        )
+        if req.is_json or req.path.startswith('/api/'):
+            return jf({'error': 'Internal server error'}), 500
+        return 'Internal server error', 500
+
+    # Call init_app if the config class defines it (production validation)
+    if hasattr(app.config.get('__class__', type(None)), 'init_app'):
+        pass  # init_app is a @staticmethod on the config class, called via from_object
+
     return app

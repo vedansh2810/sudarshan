@@ -29,6 +29,16 @@ class Config:
     SESSION_COOKIE_SECURE = False   # HTTP allowed in development; overridden in ProductionConfig
     WTF_CSRF_TIME_LIMIT = 3600  # CSRF tokens valid for 1 hour
 
+    # ── Security response headers ─────────────────────────────────────────
+    # Applied via after_request middleware in __init__.py
+    SECURITY_HEADERS = {
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-XSS-Protection': '1; mode=block',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    }
+
     # Redis + Celery (optional — falls back to in-process threading if unavailable)
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', os.environ.get('REDIS_URL', 'redis://localhost:6379/0'))
@@ -133,13 +143,38 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
     SECRET_KEY = os.environ.get('SECRET_KEY')
-    SESSION_COOKIE_SECURE = True
+
+    # ── HTTPS enforcement ─────────────────────────────────────────────────
+    SESSION_COOKIE_SECURE = True      # Cookie only sent over HTTPS
+    PREFERRED_URL_SCHEME = 'https'    # url_for() generates https:// links
+
+    # ── Database ──────────────────────────────────────────────────────────
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
         Config.SQLALCHEMY_DATABASE_URI
     )
+    # Force SSL for PostgreSQL connections (prevents MitM on DB traffic)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        **Config.SQLALCHEMY_ENGINE_OPTIONS,
+        'connect_args': {'sslmode': 'require'},
+    }
+
     # Use Redis for rate limiting in production (shared across workers)
     RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+    # Stricter HSTS header in production (added to base SECURITY_HEADERS)
+    SECURITY_HEADERS = {
+        **Config.SECURITY_HEADERS,
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+        'Content-Security-Policy': (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self' https://*.supabase.co wss://*.supabase.co"
+        ),
+    }
 
     @staticmethod
     def init_app(app):
@@ -148,6 +183,13 @@ class ProductionConfig(Config):
                 "SECRET_KEY environment variable is REQUIRED in production. "
                 "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
             )
+
+        # ── Trust proxy headers (Render, Railway, etc.) ───────────────────
+        # Required so request.remote_addr reflects the real client IP
+        # rather than the load balancer's IP.
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 
 config = {
     'development': DevelopmentConfig,

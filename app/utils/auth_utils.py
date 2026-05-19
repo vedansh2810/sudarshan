@@ -45,6 +45,12 @@ def login_required(f):
                     f"Session invalidated: user_id={session.get('user_id')} "
                     f"no longer exists in database"
                 )
+                from app.monitoring.security_logger import security_log
+                security_log.session_invalidated(
+                    user_id=session.get('user_id'),
+                    ip=request.remote_addr,
+                    reason='user_deleted'
+                )
                 session.clear()
                 if request.is_json or request.path.startswith('/api/'):
                     return jsonify({'error': 'Session expired'}), 401
