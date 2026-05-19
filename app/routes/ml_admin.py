@@ -1,10 +1,12 @@
 """
 ML Admin Routes — labeling interface, stats, data export, vulnerability labeling, retraining.
 
-All routes require login.
+All routes require admin access. These endpoints operate on cross-user data
+(vulnerability findings, scan attempts, ML training data) and must not be
+accessible to regular users (IDOR protection).
 """
 from flask import Blueprint, render_template, request, jsonify, session
-from app.utils.auth_utils import login_required
+from app.utils.auth_helpers import admin_required
 from app.models.ml_training import ScanAttempt
 import logging
 
@@ -14,7 +16,7 @@ ml_admin_bp = Blueprint('ml_admin', __name__)
 
 
 @ml_admin_bp.route('/ml/labeling')
-@login_required
+@admin_required
 def labeling():
     """Show unlabeled scan attempts for manual verification."""
     vuln_type = request.args.get('type')
@@ -29,7 +31,7 @@ def labeling():
 
 
 @ml_admin_bp.route('/ml/label/<int:attempt_id>', methods=['POST'])
-@login_required
+@admin_required
 def label_attempt(attempt_id):
     """Label a scan attempt as true/false positive."""
     data = request.get_json()
@@ -51,7 +53,7 @@ def label_attempt(attempt_id):
 
 
 @ml_admin_bp.route('/ml/stats')
-@login_required
+@admin_required
 def stats():
     """Show ML training statistics."""
     statistics = ScanAttempt.get_statistics()
@@ -59,7 +61,7 @@ def stats():
 
 
 @ml_admin_bp.route('/ml/export')
-@login_required
+@admin_required
 def export_data():
     """Export labeled data as JSON."""
     vuln_type = request.args.get('type')
@@ -73,7 +75,7 @@ def export_data():
 # ── Vulnerability Finding Labeling ───────────────────────────────────
 
 @ml_admin_bp.route('/ml/findings')
-@login_required
+@admin_required
 def findings_for_labeling():
     """List vulnerability findings for TP/FP labeling."""
     from app.models.database import VulnerabilityModel
@@ -112,7 +114,7 @@ def findings_for_labeling():
 
 
 @ml_admin_bp.route('/ml/label-vuln/<int:vuln_id>', methods=['POST'])
-@login_required
+@admin_required
 def label_vulnerability(vuln_id):
     """Label a vulnerability finding as true/false positive.
 
@@ -178,7 +180,7 @@ def label_vulnerability(vuln_id):
 
 
 @ml_admin_bp.route('/ml/retrain', methods=['POST'])
-@login_required
+@admin_required
 def retrain_model():
     """Trigger ML classifier retraining from labeled data."""
     try:

@@ -143,6 +143,7 @@ def auth_callback():
         session['user_id'] = local_user['id']
         session['username'] = local_user['username']
         session['email'] = local_user['email']
+        session['is_admin'] = local_user.get('is_admin', False)
         session['_authenticated_at'] = datetime.now(timezone.utc).isoformat()
         session['_last_validated'] = datetime.now(timezone.utc).isoformat()
 
