@@ -3,6 +3,7 @@ from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
 from app.utils.auth_utils import login_required
 from app.utils.auth_helpers import user_can_access_scan
+from app import limiter
 import html as html_lib
 import json
 import logging
@@ -59,6 +60,7 @@ def view(scan_id):
     )
 
 @results_bp.route('/scan/<int:scan_id>/report/html')
+@limiter.limit("10 per hour")
 @login_required
 def generate_html(scan_id):
     scan = Scan.get_by_id(scan_id)
@@ -80,6 +82,7 @@ def generate_html(scan_id):
     )
 
 @results_bp.route('/scan/<int:scan_id>/report/pdf')
+@limiter.limit("10 per hour")
 @login_required
 def generate_pdf(scan_id):
     scan = Scan.get_by_id(scan_id)

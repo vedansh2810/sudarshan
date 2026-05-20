@@ -3,7 +3,7 @@ from app.models.scan import Scan
 from app.models.database import ScanModel
 from app.utils.auth_utils import login_required
 from app.utils.auth_helpers import user_can_access_scan
-from app import csrf
+from app import csrf, limiter
 from sqlalchemy import func
 import math
 
@@ -82,6 +82,7 @@ def index():
                          pagination=pagination)
 
 @history_bp.route('/history/<int:scan_id>/delete', methods=['POST'])
+@limiter.limit("20 per hour")
 @login_required
 def delete(scan_id):
     scan = Scan.get_by_id(scan_id)
@@ -91,6 +92,7 @@ def delete(scan_id):
 
 @history_bp.route('/api/scans/<int:scan_id>', methods=['DELETE'])
 @csrf.exempt
+@limiter.limit("20 per hour")
 @login_required
 def api_delete(scan_id):
     """API endpoint for JS-based deletion"""

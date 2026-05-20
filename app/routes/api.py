@@ -3,10 +3,13 @@ from app.models.scan import Scan
 from app.models.database import db, ScanModel, VulnerabilityModel
 from app.scanner.scan_manager import ScanManager
 from app.utils.auth_utils import login_required
-from app import csrf
+from app import csrf, limiter
 from sqlalchemy import func
 
 api_bp = Blueprint('api', __name__)
+
+# Blueprint-level rate limit for legacy API
+limiter.limit("60 per minute")(api_bp)
 
 @api_bp.route('/api/scan/<int:scan_id>/status')
 @login_required

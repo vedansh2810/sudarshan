@@ -13,13 +13,16 @@ from app.scanner.scan_manager import ScanManager
 from app.utils.auth_utils import login_required
 from app.utils.auth_helpers import user_can_access_scan
 from app.config import Config
-from app import csrf
+from app import csrf, limiter
 from sqlalchemy import func
 import json
 
 logger = logging.getLogger(__name__)
 
 api_v2_bp = Blueprint('api_v2', __name__, url_prefix='/api/v2')
+
+# Blueprint-level rate limit: cap total API throughput per IP
+limiter.limit("30 per minute")(api_v2_bp)
 
 
 # ── Helper ────────────────────────────────────────────────────────────────
@@ -183,6 +186,7 @@ def list_scans():
 
 @api_v2_bp.route('/scans', methods=['POST'])
 @csrf.exempt
+@limiter.limit("10 per hour")
 @login_required
 def create_scan():
     """Start a new vulnerability scan."""
@@ -259,6 +263,7 @@ def get_scan(scan_id):
 
 @api_v2_bp.route('/scans/<int:scan_id>', methods=['DELETE'])
 @csrf.exempt
+@limiter.limit("20 per hour")
 @login_required
 def delete_scan(scan_id):
     """Delete a scan."""
@@ -386,6 +391,7 @@ def scan_stream(scan_id):
 # ── Reports ───────────────────────────────────────────────────────────────
 
 @api_v2_bp.route('/scans/<int:scan_id>/report/<fmt>')
+@limiter.limit("20 per hour")
 @login_required
 def download_report(scan_id, fmt):
     """Download PDF or HTML report."""

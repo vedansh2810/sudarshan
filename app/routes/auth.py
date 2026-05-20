@@ -68,6 +68,7 @@ def _validate_request_origin():
 
 
 @auth_bp.route('/login')
+@limiter.limit("20 per minute")
 def login():
     if 'user_id' in session:
         return redirect(url_for('dashboard.index'))
@@ -77,6 +78,7 @@ def login():
 
 
 @auth_bp.route('/register')
+@limiter.limit("10 per minute")
 def register():
     if 'user_id' in session:
         return redirect(url_for('dashboard.index'))
@@ -87,7 +89,7 @@ def register():
 
 @auth_bp.route('/auth/callback', methods=['POST'])
 @csrf.exempt
-@limiter.limit("10 per minute")
+@limiter.limit("5 per minute")
 def auth_callback():
     """Receives Supabase access token from client-side auth, verifies it,
     and creates a Flask session.

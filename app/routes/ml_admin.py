@@ -8,6 +8,7 @@ accessible to regular users (IDOR protection).
 from flask import Blueprint, render_template, request, jsonify, session
 from app.utils.auth_helpers import admin_required
 from app.models.ml_training import ScanAttempt
+from app import limiter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ def stats():
 
 
 @ml_admin_bp.route('/ml/export')
+@limiter.limit("10 per hour")
 @admin_required
 def export_data():
     """Export labeled data as JSON."""
@@ -180,6 +182,7 @@ def label_vulnerability(vuln_id):
 
 
 @ml_admin_bp.route('/ml/retrain', methods=['POST'])
+@limiter.limit("3 per hour")
 @admin_required
 def retrain_model():
     """Trigger ML classifier retraining from labeled data."""
