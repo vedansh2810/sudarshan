@@ -225,6 +225,7 @@ def create_data_dirs():
         DATA_DIR / "reports",
         DATA_DIR / "report_diagrams",
         DATA_DIR / "ml_models",
+        DATA_DIR / "portswigger_knowledge",
         PROJECT_ROOT / "logs",
     ]
     created = 0
@@ -332,19 +333,29 @@ def do_run():
             log_warn("Edit .env to fix. Starting server anyway...\n")
 
     run_py = PROJECT_ROOT / "run.py"
+    if not run_py.exists():
+        log_err("run.py not found in project root!")
+        sys.exit(1)
+
     log(f"Starting Flask server...")
     print()
 
-    # Replace current process with the Flask server
-    # This ensures Ctrl+C works properly
-    try:
-        os.execv(venv_python, [venv_python, str(run_py)])
-    except Exception:
-        # Fallback: use subprocess (Ctrl+C may behave differently)
+    # On Windows, os.execv doesn't work reliably (leaves orphans).
+    # Use subprocess.run instead for proper Ctrl+C handling.
+    if IS_WINDOWS:
         try:
             subprocess.run([venv_python, str(run_py)])
         except KeyboardInterrupt:
             print(f"\n  {YELLOW}Server stopped.{RESET}")
+    else:
+        # On Unix, replace the current process for clean signal handling
+        try:
+            os.execv(venv_python, [venv_python, str(run_py)])
+        except Exception:
+            try:
+                subprocess.run([venv_python, str(run_py)])
+            except KeyboardInterrupt:
+                print(f"\n  {YELLOW}Server stopped.{RESET}")
 
 def do_check():
     """Print setup status without running."""
@@ -383,15 +394,22 @@ def do_check():
     log_ok("npm: available") if command_exists("npm") else log_warn("npm: not found (optional)")
 
     # Data dirs
-    if (DATA_DIR / "portswigger_knowledge").exists():
+    if (DATA_DIR / "portswigger_knowledge").exists() and any((DATA_DIR / "portswigger_knowledge").glob("*.json")):
         log_ok("Knowledge base: present")
     else:
         log_warn("Knowledge base: missing (data/portswigger_knowledge/)")
 
-    if (DATA_DIR / "ml_models").exists() and any((DATA_DIR / "ml_models").iterdir()):
+    if (DATA_DIR / "ml_models").exists() and any((DATA_DIR / "ml_models").glob("*.joblib")):
         log_ok("ML models: present")
     else:
         log_warn("ML models: missing (data/ml_models/)")
+
+    # Database
+    db_file = DATA_DIR / "database.db"
+    if db_file.exists():
+        log_ok(f"SQLite database: {db_file.stat().st_size / 1024 / 1024:.1f} MB")
+    else:
+        log_ok("SQLite database: will be created on first run")
 
     # Overall
     print()
