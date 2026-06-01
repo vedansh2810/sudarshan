@@ -1,424 +1,311 @@
-# Sudarshan — Web Vulnerability Scanner
+# Sudarshan - Web Vulnerability Scanner
 
-**Project Type:** Full-stack web application  
-**Backend:** Python 3.12 / Flask 3.0  
-**Database:** PostgreSQL (Supabase) with SQLite fallback  
-**Auth:** Supabase Auth (GoTrue)  
-**AI/LLM:** Groq API (Llama 3.3 70B Versatile)  
-**ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)  
-**Task Queue:** Celery + Redis (optional — falls back to in-process threading)  
-**Deployment:** Gunicorn or local dev (venv + `run.py`)  
+**Project Type:** Full-stack web application
+**Backend:** Python 3.12+ / Flask 3.0
+**Database:** PostgreSQL (Supabase) with SQLite fallback
+**Auth:** Supabase Auth (GoTrue) - client-side SDK + server-side token verification
+**AI/LLM:** Groq API (Llama 3.3 70B Versatile)
+**ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)
+**Task Queue:** Celery + Redis (optional - falls back to in-process threading)
+**Frontend:** Jinja2 templates + Tailwind CSS (pre-built) + vanilla JS
+**Deployment:** Gunicorn (Unix) or `python run.py` (Windows/dev)
 
 ---
 
-## Architecture Overview
+## Quick Start
+
+```bash
+python start.py       # Auto-setup + run (first time: installs deps, creates .env, builds CSS)
+python start.py --check   # Show setup status
+python start.py --setup   # Force re-run setup
+```
+
+---
+
+## Project Structure
 
 ```
 sudarshan/
-├── run.py                          # Entry point (Flask dev server, port 5000)
-├── requirements.txt                # Python dependencies (45 lines)
-
-├── .env                            # Environment variables (Supabase, Groq, Redis)
-├── .env.example                    # Safe env template (no secrets)
-├── .gitignore                      # Git exclusions
-├── PROJECT_CONTEXT.md              # This file
-├── README.md                       # Project documentation
-├── app/
-│   ├── __init__.py                 # Flask app factory (create_app) — 5.2KB
-│   ├── config.py                   # Config classes (Dev/Prod) — 5.0KB
-│   ├── celery_app.py               # Celery factory with Flask context — 1.1KB
-│   ├── tasks.py                    # Celery task definitions (run_scan_task) — 15.8KB
-│   ├── ai/                         # AI/LLM intelligence layer
-│   │   ├── __init__.py
-│   │   ├── smart_engine.py         # Unified AI engine (LLM + PortSwigger + ML) — 27.6KB
-│   │   ├── llm_client.py           # Groq LLM client (rate-limited, cached) — 7.8KB
-│   │   ├── analyzer.py             # Vulnerability analysis & FP classification — 10.2KB
-│   │   └── report_writer.py        # AI-generated report sections — 11.8KB
-│   ├── ml/                         # Machine Learning
-│   │   ├── __init__.py
-│   │   └── false_positive_classifier.py  # RF+GB ensemble FP classifier — 8.9KB
-│   ├── models/                     # SQLAlchemy ORM models
-│   │   ├── __init__.py
-│   │   ├── database.py             # Core models + db init + migrations — 7.7KB
-│   │   ├── scan.py                 # Scan CRUD operations — 8.2KB
-│   │   ├── user.py                 # User CRUD (Supabase ↔ local mapping) — 3.5KB
-│   │   ├── vulnerability.py        # Vulnerability CRUD — 4.3KB
-│   │   ├── organization.py         # Multi-tenant org/team model — 11.8KB
-│   │   ├── webhook.py              # Webhook event notifications — 6.1KB
-│   │   ├── api_key.py              # HMAC-SHA256 API key auth — 4.8KB
-│   │   └── ml_training.py          # ML training data (ScanAttempt, MLModel) — 11.3KB
-│   ├── scanner/                    # Core scanning engine
-│   │   ├── __init__.py
-│   │   ├── scan_manager.py         # Scan orchestration (Celery or threading) — 37.0KB
-│   │   ├── crawler.py              # Multi-threaded web crawler — 23.7KB
-│   │   ├── dvwa_auth.py            # DVWA auto-authentication — 6.2KB
-│   │   ├── payload_manager.py      # Static payload database — 30.7KB
-│   │   └── vulnerabilities/        # 15 vulnerability scanner modules (16 checks)
-│   │       ├── __init__.py
-│   │       ├── base.py             # Base scanner class — 17.2KB
-│   │       ├── sql_injection.py    # SQL Injection — 26.2KB
-│   │       ├── xss.py              # Cross-Site Scripting — 24.6KB
-│   │       ├── csrf.py             # CSRF — 10.3KB
-│   │       ├── command_injection.py # OS Command Injection — 15.0KB
-│   │       ├── directory_traversal.py # Path Traversal — 11.3KB
-│   │       ├── xxe.py              # XML External Entity — 14.8KB
-│   │       ├── ssrf.py             # Server-Side Request Forgery — 16.3KB
-│   │       ├── ssti.py             # Server-Side Template Injection — 9.8KB
-│   │       ├── jwt_attacks.py      # JWT Vulnerabilities — 19.7KB
-│   │       ├── broken_auth.py      # Broken Authentication — 19.6KB
-│   │       ├── idor.py             # IDOR + Directory Listing (2 scanners) — 8.2KB
-│   │       ├── open_redirect.py    # Open Redirect — 11.3KB
-│   │       ├── cors.py             # CORS Misconfiguration — 6.9KB
-│   │       ├── clickjacking.py     # Clickjacking — 4.5KB
-│   │       └── security_headers.py # Security Headers — 15.5KB
-│   ├── routes/                     # Flask blueprints
-│   │   ├── __init__.py
-│   │   ├── main.py                 # Landing page — 1.0KB
-│   │   ├── auth.py                 # Login/Register (Supabase Auth) — 4.4KB
-│   │   ├── dashboard.py            # User dashboard — 3.6KB
-│   │   ├── scan.py                 # Start/manage scans — 13.7KB
-│   │   ├── results.py              # View results + HTML/PDF reports — 27.2KB
-│   │   ├── history.py              # Scan history — 3.4KB
-│   │   ├── api.py                  # Legacy API v1 — 2.0KB
-│   │   ├── api_v2.py               # RESTful API v2 (API key auth) — 15.1KB
-│   │   └── ml_admin.py             # ML training data admin panel — 7.7KB
-│   ├── utils/                      # Utility modules
-│   │   ├── __init__.py
-│   │   ├── auth_helpers.py         # @login_required decorator — 641B
-│   │   ├── auth_utils.py           # Session helpers — 666B
-│   │   └── url_safety.py           # SSRF protection (IP validation) — 3.5KB
-│   ├── monitoring/
-│   │   ├── __init__.py
-│   │   └── metrics.py              # Prometheus metrics — 2.6KB
-│   ├── static/                     # Local static assets
-│   │   ├── css/
-│   │   │   └── sudarshan.css       # Shared stylesheet — 10.3KB
-│   │   └── js/
-│   │       └── utils.js            # Shared JS utilities — 1.0KB
-│   └── templates/                  # Jinja2 HTML templates
-│       ├── base.html               # Base template (CDN links, nav) — 3.8KB
-│       ├── layout.html             # Layout template (sidebar) — 4.8KB
-│       ├── auth/
-│       │   ├── login.html          # Login page — 9.7KB
-│       │   ├── register.html       # Registration page — 10.9KB
-│       │   └── callback_handler.html # OAuth callback handler — 2.9KB
-│       ├── dashboard/
-│       │   └── index.html          # Dashboard page — 11.5KB
-│       ├── scan/
-│       │   ├── new.html            # Scan configuration page — 7.1KB
-│       │   └── progress.html       # Real-time scan progress (SSE) — 12.8KB
-│       ├── results/
-│       │   └── view.html           # Scan results & report view — 9.8KB
-│       ├── history/
-│       │   └── index.html          # Scan history page — 9.4KB
-│       ├── main/
-│       │   └── index.html          # Landing page — 13.0KB
-│       └── ml_admin/
-│           ├── labeling.html       # ML training data labeling — 9.2KB
-│           └── stats.html          # ML model stats & management — 6.5KB
-├── data/
-│   ├── database.db                 # SQLite database (dev) — 11.4MB
-│   ├── ml_models/
-│   │   └── fp_classifier_v20260311_113925.joblib  # Trained ML model — 484KB
-│   ├── portswigger_knowledge/      # PortSwigger KB (JSON)
-│   │   ├── portswigger_knowledge.json  # Full KB — 2.0MB
-│   │   ├── lab_index.json              # 269 labs index — 77KB
-│   │   └── payloads_by_category.json   # 2197 payloads — 765KB
-│   ├── report_diagrams/            # Generated report diagram assets (empty)
-│   └── reports/                    # Generated HTML/PDF reports (empty)
-├── scripts/                        # Utility scripts
-│   ├── portswigger_scraper.py      # Scrape PortSwigger labs — 32.5KB
-│   ├── portswigger_auto_trainer.py # Auto-train from scraped data — 24.5KB
-│   ├── portswigger_complete_integration.py — 3.3KB
-│   ├── train_ml_models.py          # Train ML false-positive classifier — 4.1KB
-│   ├── generate_diagrams.py        # Generate report diagram assets — 14.3KB
-│   ├── generate_report_p1.py       # Report generation (part 1) — 19.2KB
-│   ├── generate_report_p2.py       # Report generation (part 2) — 28.7KB
-│   └── generate_report_p3.py       # Report generation (part 3) — 30.3KB
-├── tests/                          # pytest test suite
-│   ├── __init__.py
-│   ├── test_crawler_scanner.py     # Crawler & scanner integration tests — 20.2KB
-│   ├── test_new_scanners.py        # Vulnerability scanner tests — 15.6KB
-│   ├── test_smart_engine_integration.py  # AI/SmartEngine tests — 9.8KB
-│   ├── test_multi_tenancy.py       # Organization & multi-tenant tests — 4.0KB
-│   └── test_stateless_scan_manager.py    # Scan manager state tests — 9.1KB
-└── logs/                           # Application log files
+|-- start.py                    # One-click setup & run script
+|-- run.py                      # Flask entry point (used by start.py)
+|-- requirements.txt            # Python dependencies
+|-- package.json                # Node.js dependencies (Tailwind CSS build)
+|-- tailwind.config.js          # Tailwind CSS configuration
+|-- .env.example                # Environment template with setup instructions
+|-- .gitignore
+|-- PROJECT_CONTEXT.md          # This file
+|-- README.md                   # User-facing documentation
+|
+|-- app/
+|   |-- __init__.py             # Flask factory: create_app(), extensions, middleware
+|   |-- config.py               # Configuration (env vars, security headers, DB URI)
+|   |-- celery_app.py           # Celery worker configuration
+|   |-- tasks.py                # Celery task definitions (async scan execution)
+|   |
+|   |-- routes/
+|   |   |-- main.py             # Landing page, static pages
+|   |   |-- auth.py             # Login/register/logout/callback (Supabase Auth)
+|   |   |-- dashboard.py        # User dashboard (scan history, stats)
+|   |   |-- scan.py             # Scan CRUD, SSE streaming, progress page
+|   |   |-- results.py          # Scan results, PDF reports, AI analysis
+|   |   |-- history.py          # Scan history with filtering
+|   |   |-- api.py              # API v1 (health, metrics, legacy status)
+|   |   |-- api_v2.py           # API v2 (full REST API with API key auth)
+|   |   |-- ml_admin.py         # ML model admin (labeling, stats, retraining)
+|   |
+|   |-- models/
+|   |   |-- database.py         # SQLAlchemy models (ScanModel, VulnerabilityModel, UserModel)
+|   |   |-- user.py             # User upsert logic (Supabase UID mapping)
+|   |   |-- scan.py             # Scan CRUD helpers (dict-based interface)
+|   |   |-- vulnerability.py    # Vulnerability CRUD helpers
+|   |   |-- api_key.py          # API key model (hashed, scoped, org-aware)
+|   |   |-- webhook.py          # Webhook model (event-driven notifications)
+|   |   |-- organization.py     # Multi-tenant org model (roles, memberships)
+|   |   |-- ml_training.py      # ML training data models (labels, scan attempts)
+|   |
+|   |-- scanner/
+|   |   |-- scan_manager.py     # Orchestrator: threading, SSE, Redis pub/sub
+|   |   |-- crawler.py          # Web crawler (BFS, robots.txt, form discovery)
+|   |   |-- dvwa_auth.py        # DVWA auto-login for testing
+|   |   |-- payload_manager.py  # Centralized payload system (PortSwigger + custom)
+|   |   |-- vulnerabilities/
+|   |       |-- base.py         # Base scanner class (shared logic, AI enrichment)
+|   |       |-- sql_injection.py
+|   |       |-- xss.py
+|   |       |-- command_injection.py
+|   |       |-- directory_traversal.py
+|   |       |-- xxe.py
+|   |       |-- ssrf.py
+|   |       |-- csrf.py
+|   |       |-- cors.py
+|   |       |-- clickjacking.py
+|   |       |-- security_headers.py
+|   |       |-- open_redirect.py
+|   |       |-- ssti.py
+|   |       |-- idor.py
+|   |       |-- broken_auth.py
+|   |       |-- jwt_attacks.py
+|   |
+|   |-- ai/
+|   |   |-- smart_engine.py     # AI orchestrator (PortSwigger context, ML integration)
+|   |   |-- llm_client.py       # Groq API wrapper (retry, JSON parsing)
+|   |   |-- analyzer.py         # LLM vulnerability analysis prompts
+|   |   |-- report_writer.py    # LLM report generation (exec summary, remediation)
+|   |
+|   |-- ml/
+|   |   |-- false_positive_classifier.py  # ML false-positive classifier (ensemble)
+|   |
+|   |-- monitoring/
+|   |   |-- metrics.py          # Prometheus metrics endpoint
+|   |   |-- security_logger.py  # Structured security event logger (auth, API, SIEM)
+|   |
+|   |-- utils/
+|   |   |-- auth_utils.py       # @login_required decorator, session management
+|   |   |-- auth_helpers.py     # Scan access control (owner + org member checks)
+|   |   |-- url_safety.py       # SSRF protection (private IP blocking)
+|   |
+|   |-- static/
+|   |   |-- css/
+|   |   |   |-- sudarshan.css       # Custom design system (glass, neon, nav effects)
+|   |   |   |-- tailwind-built.css  # Pre-built Tailwind CSS (30KB minified)
+|   |   |   |-- tailwind-input.css  # Tailwind build input (@tailwind directives)
+|   |   |-- js/
+|   |       |-- utils.js            # Shared JS (sanitizer, password toggle)
+|   |
+|   |-- templates/
+|       |-- base.html               # Root template (meta, fonts, CSS, CSRF)
+|       |-- layout.html             # Authenticated layout (nav, sidebar, flash)
+|       |-- auth/
+|       |   |-- login.html          # Supabase Auth login (email + Google OAuth)
+|       |   |-- register.html       # Registration page
+|       |   |-- callback_handler.html  # OAuth callback token handler
+|       |-- dashboard/
+|       |   |-- index.html          # Dashboard with charts and stats
+|       |-- scan/
+|       |   |-- new.html            # New scan form (URL, depth, modules)
+|       |   |-- progress.html       # Live scan progress (SSE + polling fallback)
+|       |-- results/
+|       |   |-- detail.html         # Scan results with vulnerability cards
+|       |   |-- report.html         # Printable/PDF report view
+|       |-- history/
+|       |   |-- index.html          # Scan history with filters
+|       |-- main/
+|       |   |-- index.html          # Landing page
+|       |-- ml_admin/
+|           |-- labeling.html       # ML training data labeling interface
+|           |-- stats.html          # ML model performance stats
+|
+|-- data/
+|   |-- portswigger_knowledge/      # PortSwigger Academy data (committed)
+|   |   |-- portswigger_knowledge.json  # 2MB vulnerability knowledge base
+|   |   |-- payloads_by_category.json   # 765KB attack payloads
+|   |   |-- lab_index.json              # 77KB lab reference index
+|   |-- ml_models/                  # Trained ML models (committed)
+|   |   |-- fp_classifier_*.joblib  # False-positive classifier model
+|   |-- database.db                 # SQLite database (gitignored, auto-created)
+|   |-- reports/                    # Generated PDF reports (gitignored)
+|   |-- report_diagrams/            # Generated diagrams (gitignored)
+|
+|-- scripts/                        # Standalone dev/build scripts
+|   |-- portswigger_scraper.py      # Scrape PortSwigger Academy labs
+|   |-- portswigger_auto_trainer.py # Auto-train ML on PortSwigger data
+|   |-- portswigger_complete_integration.py  # Integration orchestrator
+|   |-- train_ml_models.py          # Train false-positive classifier
+|   |-- generate_diagrams.py        # Generate architecture diagrams
+|   |-- generate_report_p1/p2/p3.py # Generate project documentation
+|
+|-- tests/                          # Test suite
+|   |-- test_crawler_scanner.py     # Crawler and scanner integration tests
+|   |-- test_new_scanners.py        # Vulnerability scanner unit tests
+|   |-- test_multi_tenancy.py       # Organization/multi-tenant tests
+|   |-- test_smart_engine_integration.py  # AI engine integration tests
+|   |-- test_stateless_scan_manager.py    # Scan manager state tests
+|
+|-- docs/
+    |-- RUNNING.md                  # Deployment/running instructions
 ```
 
 ---
 
-## Database Schema (SQLAlchemy ORM)
+## Architecture
 
-### Core Tables
+### Authentication Flow
 
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `users` | Local user records (mapped from Supabase Auth) | `id`, `supabase_uid`, `username`, `email`, `is_admin` |
-| `scans` | Scan jobs | `id`, `user_id`, `org_id`, `target_url`, `scan_mode`, `scan_speed`, `crawl_depth`, `status`, `score`, `total_urls`, `tested_urls`, `vuln_count`, `critical_count`, `high_count`, `medium_count`, `low_count`, `duration`, `started_at`, `completed_at` |
-| `vulnerabilities` | Found vulnerabilities | `id`, `scan_id`, `vuln_type`, `name`, `description`, `impact`, `severity`, `cvss_score`, `owasp_category`, `affected_url`, `parameter`, `payload`, `request_data`, `response_data`, `remediation`, `ai_analysis`, `ai_narrative`, `likely_false_positive`, `fp_confidence` |
-| `crawled_urls` | URLs discovered during crawling | `id`, `scan_id`, `url`, `status_code`, `forms_found`, `params_found` |
-| `scan_logs` | Real-time scan log messages | `id`, `scan_id`, `log_type`, `message` |
-| `organizations` | Multi-tenant teams | `id`, `name`, `slug`, `plan` (free/pro/enterprise) |
-| `org_memberships` | User ↔ Org mapping | `user_id`, `org_id`, `role` (owner/admin/member/viewer) |
-| `webhooks` | Event-driven HTTP notifications | `id`, `user_id`, `url`, `on_scan_complete`, `on_vulnerability_found`, `on_scan_error`, `is_active`, `failure_count` |
-| `api_keys` | Programmatic access tokens | `id`, `user_id`, `key_hash` (HMAC-SHA256), `key_prefix`, `is_active`, `expires_at`, `usage_count` |
-| `scan_attempts` | ML training data (every scan attempt) | `id`, `scan_id`, `url`, `parameter`, `payload`, `status_code`, `response_time`, `vulnerability_found`, `is_true_positive`, `features` (JSON) |
-| `ml_models` | ML model version tracking | `id`, `name`, `version`, `model_type`, `training_accuracy`, `f1_score`, `is_active`, `model_path` |
+1. User clicks Login/Register -> Supabase JS SDK (client-side)
+2. Supabase handles email/password or Google OAuth
+3. On success, Supabase redirects to `/auth/callback-handler`
+4. `callback_handler.html` extracts the access token from URL hash
+5. Token is POSTed to `POST /auth/callback` (Flask backend)
+6. Flask verifies the token via Supabase GoTrue, upserts user in local DB
+7. Flask sets server-side session (`session["user_id"]`, `session["username"]`)
+8. All subsequent requests use Flask session (8-hour expiry, permanent)
 
-### Relationships
-- `User` → has many `Scans`, `Webhooks`, `APIKeys`, `OrgMemberships`
-- `Scan` → has many `Vulnerabilities`, `CrawledUrls`, `ScanLogs`, `ScanAttempts`
-- `Organization` → has many `OrgMemberships`, `Scans` (via `org_id`)
+### Scan Execution Flow
 
-### Auto-Migrations (in `init_db()`)
-- Adds `org_id` column to `scans` table if missing
-- Adds AI columns (`ai_analysis`, `ai_narrative`, `likely_false_positive`, `fp_confidence`) to `vulnerabilities` if missing
-- Adds `org_id` column to `api_keys` table if missing
+1. User submits scan form -> `POST /scan/new`
+2. `ScanManager.start_scan()` creates a thread (or Celery task if Redis available)
+3. **Phase 1 - Crawling:** BFS crawler discovers URLs, forms, parameters
+4. **Phase 2 - Scanning:** Each vulnerability scanner tests discovered endpoints
+5. **Phase 3 - AI Analysis:** SmartEngine enriches findings with PortSwigger context
+6. **Phase 4 - ML Classification:** False-positive classifier filters noise
+7. **Phase 5 - Scoring:** Security score calculated, results saved to DB
+8. Real-time updates via SSE (Server-Sent Events) with Redis pub/sub fallback to polling
 
----
+### Database Strategy
 
-## Scan Pipeline
+- **Primary:** PostgreSQL via Supabase (`DATABASE_URL` in `.env`)
+- **Fallback:** SQLite at `data/database.db` (auto-detected on startup)
+- The app probes PostgreSQL connectivity BEFORE initializing SQLAlchemy
+- If PostgreSQL is unreachable, engine pool options are cleared and SQLite is used
+- All models use SQLAlchemy ORM (no raw SQL)
 
-```
-Phase 0:   Connectivity Check  →  HTTP GET target, verify reachability
-Phase 1:   Crawling            →  Multi-threaded crawler discovers URLs & injectable points
-                                  Fallback test points created if crawler finds 0 URLs
-Phase 1.5: AI Recon            →  LLM analyzes HTTP response to detect tech stack, WAF, framework
-Phase 2:   Vulnerability Scan  →  16 scanners run in parallel via ThreadPoolExecutor
-           ├─ For each finding:
-           │   ├─ Deduplicated by (vuln_type, affected_url, parameter)
-           │   ├─ Batch-saved to DB (Vulnerability.create_batch)
-           │   └─ Prometheus metrics tracked
-           └─ Progress streaming via SSE (Redis pub/sub or in-memory queues)
-Finalize:  Score calculation (A–F letter grade), duration, severity counts → DB
-           Webhook triggers (best-effort)
-           Redis state cleanup
-```
+### AI / LLM Integration
 
-> **Note:** Phase 3 (Post-Scan AI Deep Analysis) was removed to eliminate database session
-> poisoning issues and reduce false-positive noise. AI analysis now runs inline during Phase 2.
+- **Provider:** Groq API (fast inference on Llama 3.3 70B)
+- **SmartEngine** (`app/ai/smart_engine.py`) orchestrates:
+  - PortSwigger knowledge base lookups
+  - AI-powered vulnerability analysis
+  - Smart payload selection
+  - Executive summary generation
+- **Graceful degradation:** All AI features are optional; app works without `GROQ_API_KEY`
 
-### Dual Execution Modes
-The scan pipeline runs in two modes, automatically selected at startup:
-1. **Celery mode** — When Redis is available: dispatches to Celery worker, state tracked in Redis hashes, SSE via Redis pub/sub
-2. **Threading mode** — When Redis is unavailable: runs scan in daemon thread, state tracked in-memory dicts, SSE via in-memory queues
+### Multi-Tenancy
 
-### Score Calculation
-| Score | Condition |
-|-------|-----------|
-| A | score_num ≥ 90 |
-| B | score_num ≥ 80 |
-| C | score_num ≥ 70 |
-| D | score_num ≥ 60 |
-| F | score_num < 60 |
-
-Formula: `100 - (critical × 20) - (high × 10) - (medium × 5)`, clamped to ≥ 0.
-
-### Supported Vulnerability Checks (16)
-`sql_injection`, `xss`, `csrf`, `security_headers`, `directory_traversal`, `command_injection`, `idor`, `directory_listing`, `xxe`, `ssrf`, `open_redirect`, `cors`, `clickjacking`, `ssti`, `jwt_attacks`, `broken_auth`
-
-### Scan Modes & Speeds
-- **Modes:** `active` (full scanning) | `passive` (headers only)
-- **Speeds:** `safe` (1.0s delay, 3 threads, 75 URLs) | `balanced` (0.15s, 6 threads, 200 URLs) | `aggressive` (0.05s, 10 threads, 500 URLs)
-
-### Scan Controls
-- **Start / Pause / Resume / Stop** — via Redis control keys (`scan:{id}:control`) or in-memory threading flags
-- **Orphan Recovery** — on app startup, scans stuck in `running` for >10 min are recovered to `error`
+- Organizations with roles: `owner`, `admin`, `member`, `viewer`
+- Scans are scoped to user or organization
+- API keys can be org-scoped
+- Webhooks fire on scan events (complete, error, vulnerability found)
 
 ---
 
-## AI/LLM System
+## Key Configuration (`.env`)
 
-### SmartEngine (`app/ai/smart_engine.py`) — Unified Intelligence Layer
-Thread-safe singleton integrating 3 systems:
+| Variable | Required | Description |
+|----------|:--------:|-------------|
+| `SECRET_KEY` | Yes | Flask session secret (auto-generated by `start.py`) |
+| `SUPABASE_URL` | Yes* | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Yes* | Supabase public anon key |
+| `SUPABASE_SERVICE_KEY` | Yes* | Supabase service role key |
+| `DATABASE_URL` | No | PostgreSQL URI (falls back to SQLite) |
+| `REDIS_URL` | No | Redis URI (falls back to threading) |
+| `GROQ_API_KEY` | No | Groq API key for AI features |
+| `PORT` | No | Server port (default: 5000) |
 
-1. **LLM (Groq / Llama 3.3 70B)** — All reasoning, analysis, payload generation
-   - Rate-limited (28 RPM, Groq free tier)
-   - Response caching (1-hour TTL, MD5-keyed)
-   - Graceful fallback — scanning never stops if LLM is unavailable
-
-2. **PortSwigger Knowledge Base** — 269 labs, 2197 payloads, 31 categories
-   - Lazy-loaded from `data/portswigger_knowledge/portswigger_knowledge.json`
-   - Maps scanner vuln_types to PortSwigger category slugs
-   - Enriches LLM prompts with real lab solutions and payloads
-
-3. **ML False-Positive Classifier** — Random Forest + Gradient Boosting ensemble
-   - 16 features (payload analysis, response comparison, error patterns)
-   - Trained from labeled `scan_attempts` data
-   - Combined verdict: ML (40%) + LLM (60%)
-   - Current model: `fp_classifier_v20260311_113925.joblib` (484KB)
-
-### Key AI Functions
-| Function | Purpose |
-|----------|---------|
-| `reconnaissance()` | Detect target tech stack, WAF, framework from HTTP response |
-| `generate_smart_payloads()` | Context-aware payload generation using LLM + PortSwigger |
-| `generate_waf_bypass()` | WAF bypass variants using LLM + PortSwigger bypass techniques |
-| `verify_finding()` | 3-layer FP verification: ML → LLM → combined (40/60 weight) |
-| `generate_attack_narrative()` | Professional exploitation writeup with PortSwigger lab refs |
-| `enrich_remediation()` | Add PortSwigger Academy learning links to remediation text |
-
-### LLM Prompt Templates (in `smart_engine.py`)
-- `PAYLOAD_GENERATION_PROMPT` — Context-aware payload generation
-- `WAF_BYPASS_PROMPT` — WAF evasion payload variants
-- `RECON_PROMPT` — Technology stack fingerprinting
-- `ATTACK_NARRATIVE_PROMPT` — Professional finding writeups
-- `FINDING_VERIFICATION_PROMPT` — ML+LLM combined FP verification
-
-### Report Generation (AI-powered, `app/ai/report_writer.py`)
-- Executive summary (3-5 paragraphs, professional consultant tone)
-- Prioritized remediation plan with code examples
-- Attack narratives per finding
-- Risk score explanations (business-friendly)
-- All with fallbacks if LLM is unavailable
-
----
-
-## Authentication & Authorization
-
-- **Supabase Auth** handles registration, login, JWT tokens
-- **Local user mapping:** `supabase_uid` → local `users.id` via `User.get_or_create_from_supabase()`
-- **Session-based auth** with `@login_required` decorator
-- **OAuth callback:** `auth/callback_handler.html` handles Supabase OAuth redirects
-- **API key auth** for v2 API (HMAC-SHA256 hashing with transparent legacy migration)
-- **Multi-tenant access:** Users see own scans + organization-shared scans
-- **CSRF protection** via Flask-WTF (1-hour token validity)
-- **Rate limiting** via Flask-Limiter (200/day, 50/hour default)
+*Required for login/register to work. Without these, auth pages will render but Supabase JS SDK will fail silently.
 
 ---
 
 ## API Endpoints
 
-### Web Routes (Server-rendered Jinja2)
-| Blueprint | Prefix | Purpose |
-|-----------|--------|---------|
-| `main_bp` | `/` | Landing page |
-| `auth_bp` | `/auth` | Login, register, logout, OAuth callback |
-| `dashboard_bp` | `/dashboard` | User dashboard with stats |
-| `scan_bp` | `/scan` | Start new scan, configure checks, real-time progress |
-| `results_bp` | `/results` | View results, download HTML/PDF reports |
-| `history_bp` | `/history` | Scan history with filtering |
-| `ml_admin_bp` | `/ml-admin` | ML training data labeling & model stats |
+### Web Routes (Server-Rendered)
+- `GET /` - Landing page
+- `GET /login`, `GET /register` - Auth pages
+- `POST /auth/callback` - Token verification
+- `GET /dashboard` - User dashboard
+- `GET /scan/new`, `POST /scan/new` - New scan
+- `GET /scan/<id>/progress` - Live progress (SSE)
+- `GET /scan/<id>/results` - Results page
+- `GET /scan/<id>/report` - PDF report
+- `GET /history` - Scan history
 
-### REST API v2 (`/api/v2/`)
-API key authenticated (`X-API-Key` header), CSRF-exempt. Includes:
-- Scan management (create, status, list, delete)
-- Vulnerability retrieval
-- Organization management
-- Webhook CRUD
+### API v2 (JSON, session auth via @login_required)
+- `GET /api/v2/auth/session` - Current session info
+- `GET /api/v2/dashboard` - Dashboard stats
+- `GET /api/v2/scans` - List scans (paginated, filterable)
+- `POST /api/v2/scans` - Start scan (CSRF-exempt, rate limited 10/hr)
+- `GET /api/v2/scans/<id>` - Scan details
+- `DELETE /api/v2/scans/<id>` - Delete scan (CSRF-exempt, rate limited 20/hr)
+- `GET /api/v2/scans/<id>/status` - Live scan status
+- `GET /api/v2/scans/<id>/results` - Vulnerabilities (severity/type filters)
+- `POST /api/v2/scans/<id>/pause` - Pause scan
+- `POST /api/v2/scans/<id>/resume` - Resume scan
+- `POST /api/v2/scans/<id>/stop` - Stop scan
+- `GET /api/v2/scans/<id>/stream` - SSE event stream
+- `GET /api/v2/scans/<id>/report/<fmt>` - Download PDF/HTML report
+- `GET /api/v2/checks` - List available vulnerability checks
 
-### Legacy API v1 (`/api/`)
-Basic scan endpoints (maintained for backward compatibility).
-
----
-
-## Infrastructure
-
-### Application Factory (`app/__init__.py`)
-1. Loads `.env` via `python-dotenv`
-2. Fixes `postgres://` → `postgresql+psycopg://` URI format
-3. Initializes extensions (SQLAlchemy, Flask-Migrate, CSRF, Flask-Limiter)
-4. Initializes Celery with Flask context
-5. **Probes database connectivity** — if PostgreSQL is unreachable, falls back to SQLite
-6. Creates tables + runs column migrations
-7. Recovers orphaned scans from previous crashes
-8. Registers all 9 blueprints
-
-### Database Connectivity
-- **Primary:** PostgreSQL via Supabase (connection pooler, port 5432)
-- **Fallback:** SQLite at `data/database.db` — activated automatically if PostgreSQL probe fails
-- Connection pool: 10 connections, 20 overflow, 30s timeout, 30min recycle, pre-ping enabled
-
-### SSE Event Streaming
-- **Redis mode:** pub/sub on `scan:{id}:events` channel + `scan:{id}:event_history` list (1h TTL)
-- **Threading mode:** in-memory queues with event history for late-joining clients
-- Events: `log`, `progress`, `finding`, `complete`
-
-### Plan-Based Resource Limits
-| Plan | Scans/Month | Concurrent | Team Members | URLs/Scan | AI Analysis |
-|------|-------------|-----------|--------------|-----------|-------------|
-| Free | 5 | 1 | 3 | 100 | No |
-| Pro | 50 | 3 | 15 | 500 | Yes |
-| Enterprise | Unlimited | 10 | Unlimited | Unlimited | Yes |
-
-### Monitoring
-- Prometheus metrics via `prometheus-client`
-- Tracks: scans started/completed, vulnerabilities by severity/type
+### Infrastructure
+- `GET /api/health` - Health check
+- `GET /api/metrics` - Prometheus metrics
 
 ---
 
-## Key Dependencies
+## Vulnerability Scanners (15 modules)
 
-| Category | Package | Version |
-|----------|---------|---------|
-| Framework | Flask | 3.0.0 |
-| ORM | Flask-SQLAlchemy | 3.1.1 |
-| Migrations | Flask-Migrate | 4.0.7 |
-| DB Driver | psycopg (3.x) | ≥3.1.0 |
-| Auth | gotrue + PyJWT | ≥2.0.0 / ≥2.8.0 |
-| Task Queue | celery[redis] | 5.4.0 |
-| AI/LLM | groq | ≥0.12.0 |
-| ML | scikit-learn + pandas + joblib | ≥1.3.2 / ≥2.1.4 / ≥1.3.2 |
-| Scraping | requests + beautifulsoup4 + lxml | 2.31.0 / 4.12.2 / latest |
-| Reports | fpdf2 | 2.7.6 |
-| CSRF | Flask-WTF | 1.2.1 |
-| Rate Limiting | Flask-Limiter | 3.8.0 |
-| HTTP | Werkzeug + urllib3 | 3.0.1 / 2.0.7 |
-| Server | gunicorn | 22.0.0 |
-| Monitoring | prometheus-client | ≥0.19.0 |
-| Env | python-dotenv | 1.0.0 |
-| Testing | pytest + pytest-cov | 7.4.3 / 4.1.0 |
+| Scanner | File | Techniques |
+|---------|------|------------|
+| SQL Injection | `sql_injection.py` | Error-based, union, time-based, boolean, stacked |
+| XSS | `xss.py` | Reflected, stored, DOM, event handlers, polyglots |
+| Command Injection | `command_injection.py` | Linux/Windows, blind, IFS bypass |
+| Directory Traversal | `directory_traversal.py` | Path traversal, null byte, encoding |
+| XXE | `xxe.py` | File retrieval, SSRF via XXE, OOB, parameter entity |
+| SSRF | `ssrf.py` | Localhost, cloud metadata, protocol smuggling |
+| CSRF | `csrf.py` | Token validation, SameSite, origin checks |
+| CORS | `cors.py` | Origin reflection, null origin, wildcard |
+| Clickjacking | `clickjacking.py` | X-Frame-Options, CSP frame-ancestors |
+| Security Headers | `security_headers.py` | HSTS, CSP, X-Content-Type, Referrer-Policy |
+| Open Redirect | `open_redirect.py` | Parameter-based, path-based, encoding bypass |
+| SSTI | `ssti.py` | Jinja2, Twig, Freemarker, Velocity detection |
+| IDOR | `idor.py` | Sequential ID, UUID, parameter manipulation |
+| Broken Auth | `broken_auth.py` | Default creds, session fixation, enum |
+| JWT Attacks | `jwt_attacks.py` | Algorithm confusion, none alg, key confusion |
 
 ---
 
-## Environment Variables
+## Development
 
-| Variable | Purpose | Required |
-|----------|---------|----------|
-| `SECRET_KEY` | Flask session encryption | Production |
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `REDIS_URL` | Redis connection (Celery, rate-limiting, SSE) | Optional |
-| `REDIS_PASSWORD` | Redis authentication password | Optional |
-| `SUPABASE_URL` | Supabase project URL | Yes |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key | Yes |
-| `GROQ_API_KEY` | Groq LLM API key | Optional (AI features) |
-| `GROQ_MODEL` | LLM model name | Optional (default: llama-3.3-70b-versatile) |
-| `FLASK_ENV` | development / production | Optional |
-| `FLASK_DEBUG` | Enable debug mode (1/0) | Optional (default: 1) |
-| `PORT` | Server port | Optional (default: 5000) |
-| `ALLOW_LOCAL_TARGETS` | Allow scanning localhost/private IPs | Optional |
-
----
-
-## How to Run
-
+### Rebuild Tailwind CSS (after template changes)
 ```bash
-# Development (venv must be activated)
-python run.py
-
-# Celery worker (separate terminal, requires Redis)
-celery -A app.celery_app:celery worker --loglevel=info
-
-# Tests
-pytest tests/ -v
+npm run build:css       # One-time build
+npm run watch:css       # Watch mode (auto-rebuild on save)
 ```
 
-The app runs at `http://localhost:5000` by default.
+### Run Tests
+```bash
+.venv/Scripts/python -m pytest tests/ -v
+```
 
----
-
-## Codebase Statistics
-
-| Metric | Value |
-|--------|-------|
-| Total source files (excl. venv, pycache, git) | ~73 files |
-| Backend Python code | ~400KB across 35 .py files |
-| Frontend templates | ~116KB across 12 .html files |
-| Vulnerability scanners | 15 modules (16 checks) |
-| Test files | 5 test modules (~59KB) |
-| PortSwigger KB | ~2.8MB (3 JSON files) |
-| ML model | 1 trained model (~484KB) |
-| Static assets | CSS (10.3KB) + JS (1.0KB) |
-
-*Last updated: 2026-05-10*
+### Celery Worker (optional, for async scans)
+```bash
+celery -A app.celery_app.celery worker --loglevel=info
+```
