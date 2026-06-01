@@ -1,5 +1,6 @@
 """User operations backed by SQLAlchemy ORM.
 Authentication is handled by Supabase — this module manages local user records."""
+
 import logging
 from app.models.database import db, UserModel
 
@@ -17,35 +18,36 @@ class User:
         if user is None:
             return None
         return {
-            'id': user.id,
-            'supabase_uid': user.supabase_uid,
-            'username': user.username,
-            'email': user.email,
-            'is_admin': user.is_admin,
-            'created_at': user.created_at.isoformat() if user.created_at else None,
+            "id": user.id,
+            "supabase_uid": user.supabase_uid,
+            "username": user.username,
+            "email": user.email,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
         }
 
     @staticmethod
     def get_or_create_from_supabase(supabase_user):
         """Find or create a local user from Supabase user data.
-        
+
         Args:
             supabase_user: Supabase user object with .id, .email, .user_metadata
-        
+
         Returns:
             dict with local user data, or None on failure
         """
         uid = supabase_user.id
-        email = supabase_user.email or ''
+        email = supabase_user.email or ""
         metadata = supabase_user.user_metadata or {}
-        
+
         # Derive username from metadata or email
         username = (
-            metadata.get('preferred_username')
-            or metadata.get('user_name')
-            or metadata.get('name')
-            or metadata.get('full_name')
-            or email.split('@')[0] if email else f'user_{uid[:8]}'
+            metadata.get("preferred_username")
+            or metadata.get("user_name")
+            or metadata.get("name")
+            or metadata.get("full_name")
+            or (email.split("@")[0] if email else None)
+            or f"user_{uid[:8]}"
         )
 
         try:
@@ -66,11 +68,7 @@ class User:
                 counter += 1
 
             # Create new local user
-            user = UserModel(
-                supabase_uid=uid,
-                username=username,
-                email=email
-            )
+            user = UserModel(supabase_uid=uid, username=username, email=email)
             db.session.add(user)
             db.session.commit()
             logger.info(f"Created local user {username} (supabase_uid={uid[:8]}...)")

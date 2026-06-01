@@ -2,6 +2,7 @@
 Webhook model for event-driven notifications.
 Sends HTTP POST to registered URLs when scan events occur.
 """
+
 import json
 import logging
 import threading
@@ -15,10 +16,13 @@ logger = logging.getLogger(__name__)
 
 class Webhook(db.Model):
     """Webhook endpoint for receiving scan notifications."""
-    __tablename__ = 'webhooks'
+
+    __tablename__ = "webhooks"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
+    )
     name = db.Column(db.String(100), nullable=False)
     url = db.Column(db.String(2048), nullable=False)
 
@@ -31,16 +35,26 @@ class Webhook(db.Model):
     last_triggered = db.Column(db.DateTime)
     failure_count = db.Column(db.Integer, default=0)
 
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
 
     # Relationship
-    user = db.relationship('UserModel', backref=db.backref('webhooks', lazy='dynamic'))
+    user = db.relationship("UserModel", backref=db.backref("webhooks", lazy="dynamic"))
 
     def __repr__(self):
-        return f'<Webhook {self.name} -> {self.url[:50]}>'
+        return f"<Webhook {self.name} -> {self.url[:50]}>"
 
     @classmethod
-    def create(cls, user_id, name, url, on_scan_complete=True, on_vulnerability_found=False, on_scan_error=True):
+    def create(
+        cls,
+        user_id,
+        name,
+        url,
+        on_scan_complete=True,
+        on_vulnerability_found=False,
+        on_scan_error=True,
+    ):
         """Register a new webhook."""
         webhook = cls(
             user_id=user_id,
@@ -66,9 +80,9 @@ class Webhook(db.Model):
         Webhooks are fired in background threads so they don't block scanning.
         """
         event_field_map = {
-            'scan_complete': 'on_scan_complete',
-            'vulnerability_found': 'on_vulnerability_found',
-            'scan_error': 'on_scan_error',
+            "scan_complete": "on_scan_complete",
+            "vulnerability_found": "on_vulnerability_found",
+            "scan_error": "on_scan_error",
         }
         field = event_field_map.get(event_type)
         if not field:
@@ -78,7 +92,7 @@ class Webhook(db.Model):
             webhooks = cls.query.filter_by(user_id=user_id, is_active=True).all()
             matching = [w for w in webhooks if getattr(w, field, False)]
         except Exception as e:
-            logger.debug(f'Webhook query failed (non-fatal): {e}')
+            logger.debug(f"Webhook query failed (non-fatal): {e}")
             return
 
         # Capture the current Flask app so background threads can reuse it
@@ -101,34 +115,36 @@ class Webhook(db.Model):
         """Send webhook payload (runs in background thread)."""
         # SSRF protection: block requests to private/internal IPs
         from app.utils.url_safety import is_safe_url
+
         is_safe, reason = is_safe_url(url)
         if not is_safe:
-            logger.warning(
-                f'Webhook {webhook_id} blocked — SSRF protection: {reason}'
-            )
+            logger.warning(f"Webhook {webhook_id} blocked — SSRF protection: {reason}")
             cls._increment_failure(app, webhook_id)
             return
 
         payload = {
-            'event': event_type,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'data': data,
+            "event": event_type,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "data": data,
         }
         try:
             resp = requests.post(
                 url,
                 json=payload,
-                headers={'Content-Type': 'application/json', 'User-Agent': 'Sudarshan-Webhook/1.0'},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "Sudarshan-Webhook/1.0",
+                },
                 timeout=10,
             )
             if resp.status_code >= 400:
-                logger.warning(f'Webhook {webhook_id} returned {resp.status_code}')
+                logger.warning(f"Webhook {webhook_id} returned {resp.status_code}")
                 cls._increment_failure(app, webhook_id)
             else:
-                logger.info(f'Webhook {webhook_id} triggered successfully')
+                logger.info(f"Webhook {webhook_id} triggered successfully")
                 cls._update_last_triggered(app, webhook_id)
         except Exception as e:
-            logger.warning(f'Webhook {webhook_id} failed: {e}')
+            logger.warning(f"Webhook {webhook_id} failed: {e}")
             cls._increment_failure(app, webhook_id)
 
     @classmethod
@@ -158,7 +174,9 @@ class Webhook(db.Model):
                     webhook.failure_count = (webhook.failure_count or 0) + 1
                     if webhook.failure_count >= 10:
                         webhook.is_active = False
-                        logger.warning(f'Webhook {webhook_id} deactivated after 10 failures')
+                        logger.warning(
+                            f"Webhook {webhook_id} deactivated after 10 failures"
+                        )
                     db.session.commit()
         except Exception:
             pass

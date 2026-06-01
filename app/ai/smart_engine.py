@@ -194,22 +194,29 @@ class SmartEngine:
             if self._kb_loaded:
                 return
             try:
-                kb_path = Path('data/portswigger_knowledge/portswigger_knowledge.json')
+                kb_path = Path("data/portswigger_knowledge/portswigger_knowledge.json")
                 if kb_path.exists():
-                    with open(kb_path, 'r', encoding='utf-8') as f:
+                    with open(kb_path, "r", encoding="utf-8") as f:
                         self._portswigger_kb = json.load(f)
-                    lab_count = len(self._portswigger_kb.get('labs', []))
-                    logger.info(f'SmartEngine: PortSwigger KB loaded ({lab_count} labs)')
+                    lab_count = len(self._portswigger_kb.get("labs", []))
+                    logger.info(
+                        f"SmartEngine: PortSwigger KB loaded ({lab_count} labs)"
+                    )
                 else:
-                    logger.warning('SmartEngine: PortSwigger KB not found')
-                    self._portswigger_kb = {'labs': [], 'categories': {}, 'payloads': {}}
+                    logger.warning("SmartEngine: PortSwigger KB not found")
+                    self._portswigger_kb = {
+                        "labs": [],
+                        "categories": {},
+                        "payloads": {},
+                    }
             except Exception as e:
-                logger.error(f'SmartEngine: Failed to load KB: {e}')
-                self._portswigger_kb = {'labs': [], 'categories': {}, 'payloads': {}}
+                logger.error(f"SmartEngine: Failed to load KB: {e}")
+                self._portswigger_kb = {"labs": [], "categories": {}, "payloads": {}}
             self._kb_loaded = True
 
-    def get_portswigger_context(self, vuln_type: str, max_labs: int = 5,
-                                 max_payloads: int = 10) -> str:
+    def get_portswigger_context(
+        self, vuln_type: str, max_labs: int = 5, max_payloads: int = 10
+    ) -> str:
         """Get relevant PortSwigger context for a vulnerability type.
 
         Searches the knowledge base for labs matching the vuln type and returns
@@ -225,72 +232,76 @@ class SmartEngine:
         """
         self._load_knowledge_base()
         if not self._portswigger_kb:
-            return 'No PortSwigger data available.'
+            return "No PortSwigger data available."
 
         # Map scanner vuln_type to PortSwigger category slugs
         TYPE_TO_CATEGORIES = {
-            'sql_injection': ['sql-injection'],
-            'xss': ['cross-site-scripting', 'dom-based-vulnerabilities'],
-            'csrf': ['cross-site-request-forgery-csrf'],
-            'command_injection': ['os-command-injection'],
-            'directory_traversal': ['path-traversal'],
-            'xxe': ['xml-external-entity-xxe-injection'],
-            'ssrf': ['server-side-request-forgery-ssrf'],
-            'clickjacking': ['clickjacking'],
-            'cors': ['cross-origin-resource-sharing-cors'],
-            'ssti': ['server-side-template-injection'],
-            'broken_auth': ['authentication'],
-            'jwt_attacks': ['jwt'],
-            'open_redirect': ['authentication'],  # often discussed together
-            'idor': ['access-control-vulnerabilities'],
+            "sql_injection": ["sql-injection"],
+            "xss": ["cross-site-scripting", "dom-based-vulnerabilities"],
+            "csrf": ["cross-site-request-forgery-csrf"],
+            "command_injection": ["os-command-injection"],
+            "directory_traversal": ["path-traversal"],
+            "xxe": ["xml-external-entity-xxe-injection"],
+            "ssrf": ["server-side-request-forgery-ssrf"],
+            "clickjacking": ["clickjacking"],
+            "cors": ["cross-origin-resource-sharing-cors"],
+            "ssti": ["server-side-template-injection"],
+            "broken_auth": ["authentication"],
+            "jwt_attacks": ["jwt"],
+            "open_redirect": ["authentication"],  # often discussed together
+            "idor": ["access-control-vulnerabilities"],
         }
 
         categories = TYPE_TO_CATEGORIES.get(vuln_type, [])
         if not categories:
-            return f'No PortSwigger context for vulnerability type: {vuln_type}'
+            return f"No PortSwigger context for vulnerability type: {vuln_type}"
 
         # Find relevant labs
-        labs = self._portswigger_kb.get('labs', [])
-        relevant_labs = [
-            lab for lab in labs
-            if lab.get('category', '') in categories
-        ]
+        labs = self._portswigger_kb.get("labs", [])
+        relevant_labs = [lab for lab in labs if lab.get("category", "") in categories]
 
         # Sort by difficulty (apprentice first, then practitioner, then expert)
-        difficulty_order = {'apprentice': 0, 'practitioner': 1, 'expert': 2, 'unknown': 3}
-        relevant_labs.sort(key=lambda l: difficulty_order.get(l.get('difficulty', 'unknown'), 3))
+        difficulty_order = {
+            "apprentice": 0,
+            "practitioner": 1,
+            "expert": 2,
+            "unknown": 3,
+        }
+        relevant_labs.sort(
+            key=lambda l: difficulty_order.get(l.get("difficulty", "unknown"), 3)
+        )
 
         # Build context string
         parts = []
         for lab in relevant_labs[:max_labs]:
             parts.append(f"Lab: {lab.get('title', 'Unknown')}")
             parts.append(f"  Difficulty: {lab.get('difficulty', 'unknown')}")
-            if lab.get('description'):
-                desc = lab['description'][:300]
+            if lab.get("description"):
+                desc = lab["description"][:300]
                 parts.append(f"  Description: {desc}")
-            if lab.get('solution_steps'):
-                steps = lab['solution_steps'][:5]
+            if lab.get("solution_steps"):
+                steps = lab["solution_steps"][:5]
                 parts.append(f"  Solution steps:")
                 for i, step in enumerate(steps, 1):
                     parts.append(f"    {i}. {step[:150]}")
-            if lab.get('payloads'):
+            if lab.get("payloads"):
                 parts.append(f"  Payloads:")
-                for p in lab['payloads'][:3]:
+                for p in lab["payloads"][:3]:
                     parts.append(f"    - {p.get('code', '')[:200]}")
-            parts.append('')
+            parts.append("")
 
         # Add category-level payloads
-        payloads_data = self._portswigger_kb.get('payloads', {})
+        payloads_data = self._portswigger_kb.get("payloads", {})
         for cat in categories:
             cat_payloads = payloads_data.get(cat, [])
             if cat_payloads:
                 parts.append(f"Additional payloads from {cat}:")
                 for p in cat_payloads[:max_payloads]:
                     parts.append(f"  - {p.get('payload', '')[:200]}")
-                    if p.get('context'):
+                    if p.get("context"):
                         parts.append(f"    Context: {p['context'][:100]}")
 
-        return '\n'.join(parts) if parts else 'No relevant PortSwigger data found.'
+        return "\n".join(parts) if parts else "No relevant PortSwigger data found."
 
     def get_portswigger_labs_for_vuln(self, vuln_type: str) -> List[Dict]:
         """Get PortSwigger lab references for a vulnerability type.
@@ -302,33 +313,33 @@ class SmartEngine:
             return []
 
         TYPE_TO_CATEGORIES = {
-            'sql_injection': ['sql-injection'],
-            'xss': ['cross-site-scripting', 'dom-based-vulnerabilities'],
-            'csrf': ['cross-site-request-forgery-csrf'],
-            'command_injection': ['os-command-injection'],
-            'directory_traversal': ['path-traversal'],
-            'xxe': ['xml-external-entity-xxe-injection'],
-            'ssrf': ['server-side-request-forgery-ssrf'],
-            'ssti': ['server-side-template-injection'],
-            'clickjacking': ['clickjacking'],
-            'cors': ['cross-origin-resource-sharing-cors'],
-            'broken_auth': ['authentication'],
-            'jwt_attacks': ['jwt'],
-            'idor': ['access-control-vulnerabilities'],
+            "sql_injection": ["sql-injection"],
+            "xss": ["cross-site-scripting", "dom-based-vulnerabilities"],
+            "csrf": ["cross-site-request-forgery-csrf"],
+            "command_injection": ["os-command-injection"],
+            "directory_traversal": ["path-traversal"],
+            "xxe": ["xml-external-entity-xxe-injection"],
+            "ssrf": ["server-side-request-forgery-ssrf"],
+            "ssti": ["server-side-template-injection"],
+            "clickjacking": ["clickjacking"],
+            "cors": ["cross-origin-resource-sharing-cors"],
+            "broken_auth": ["authentication"],
+            "jwt_attacks": ["jwt"],
+            "idor": ["access-control-vulnerabilities"],
         }
 
         categories = TYPE_TO_CATEGORIES.get(vuln_type, [])
-        labs = self._portswigger_kb.get('labs', [])
+        labs = self._portswigger_kb.get("labs", [])
 
         return [
             {
-                'title': lab.get('title', ''),
-                'url': lab.get('url', ''),
-                'difficulty': lab.get('difficulty', 'unknown'),
-                'description': (lab.get('description', '') or '')[:200],
+                "title": lab.get("title", ""),
+                "url": lab.get("url", ""),
+                "difficulty": lab.get("difficulty", "unknown"),
+                "description": (lab.get("description", "") or "")[:200],
             }
             for lab in labs
-            if lab.get('category', '') in categories
+            if lab.get("category", "") in categories
         ][:10]
 
     # ─── ML Classifier ───────────────────────────────────────────────
@@ -342,24 +353,35 @@ class SmartEngine:
                 return
             try:
                 from app.ml.false_positive_classifier import FalsePositiveClassifier
+
                 classifier = FalsePositiveClassifier()
 
                 # Find latest model
-                model_dir = Path('data/ml_models')
+                model_dir = Path("data/ml_models")
                 if model_dir.exists():
-                    model_files = sorted(model_dir.glob('fp_classifier_v*.joblib'), reverse=True)
+                    model_files = sorted(
+                        model_dir.glob("fp_classifier_v*.joblib"), reverse=True
+                    )
                     if model_files:
                         if classifier.load(str(model_files[0])):
                             self._ml_classifier = classifier
-                            logger.info(f'SmartEngine: ML classifier loaded ({model_files[0].name})')
+                            logger.info(
+                                f"SmartEngine: ML classifier loaded ({model_files[0].name})"
+                            )
                         else:
-                            logger.warning('SmartEngine: ML model file found but failed to load')
+                            logger.warning(
+                                "SmartEngine: ML model file found but failed to load"
+                            )
                     else:
-                        logger.info('SmartEngine: No trained ML model found — ML verification disabled')
+                        logger.info(
+                            "SmartEngine: No trained ML model found — ML verification disabled"
+                        )
                 else:
-                    logger.info('SmartEngine: No ML models directory — ML verification disabled')
+                    logger.info(
+                        "SmartEngine: No ML models directory — ML verification disabled"
+                    )
             except Exception as e:
-                logger.warning(f'SmartEngine: ML classifier unavailable: {e}')
+                logger.warning(f"SmartEngine: ML classifier unavailable: {e}")
             self._ml_loaded = True
 
     def ml_predict(self, features: Dict) -> Tuple[bool, float]:
@@ -379,7 +401,7 @@ class SmartEngine:
         try:
             return self._ml_classifier.predict(features)
         except Exception as e:
-            logger.debug(f'ML prediction failed: {e}')
+            logger.debug(f"ML prediction failed: {e}")
             return True, 50.0
 
     # ─── LLM-Powered Functions ───────────────────────────────────────
@@ -388,6 +410,7 @@ class SmartEngine:
         """Get the LLM client. Returns None if unavailable."""
         try:
             from app.ai.llm_client import get_llm_client
+
             return get_llm_client()
         except Exception:
             return None
@@ -411,10 +434,10 @@ class SmartEngine:
             return None
 
         try:
-            headers_str = '\n'.join(
-                f'{k}: {v}' for k, v in (response.headers or {}).items()
+            headers_str = "\n".join(
+                f"{k}: {v}" for k, v in (response.headers or {}).items()
             )
-            body = (response.text or '')[:2000]
+            body = (response.text or "")[:2000]
 
             prompt = RECON_PROMPT.format(
                 url=url,
@@ -425,18 +448,23 @@ class SmartEngine:
 
             result = llm.generate_json(prompt)
             if result and isinstance(result, dict):
-                logger.info(f'AI Recon: {result.get("language", "?")} / '
-                           f'{result.get("framework", "?")} / '
-                           f'WAF: {result.get("waf_detected", False)}')
+                logger.info(
+                    f'AI Recon: {result.get("language", "?")} / '
+                    f'{result.get("framework", "?")} / '
+                    f'WAF: {result.get("waf_detected", False)}'
+                )
                 return result
         except Exception as e:
-            logger.debug(f'AI recon failed: {e}')
+            logger.debug(f"AI recon failed: {e}")
 
         return None
 
-    def generate_smart_payloads(self, vuln_type: str,
-                                 target_context: Optional[Dict] = None,
-                                 num_payloads: int = 10) -> List[Dict]:
+    def generate_smart_payloads(
+        self,
+        vuln_type: str,
+        target_context: Optional[Dict] = None,
+        num_payloads: int = 10,
+    ) -> List[Dict]:
         """Generate context-aware payloads using LLM + PortSwigger knowledge.
 
         Args:
@@ -454,32 +482,40 @@ class SmartEngine:
 
         try:
             ctx = target_context or {}
-            ps_context = self.get_portswigger_context(vuln_type, max_labs=3, max_payloads=5)
+            ps_context = self.get_portswigger_context(
+                vuln_type, max_labs=3, max_payloads=5
+            )
 
             prompt = PAYLOAD_GENERATION_PROMPT.format(
                 vuln_type=vuln_type,
                 tech_stack=f"{ctx.get('language', 'unknown')} / {ctx.get('framework', 'unknown')}",
-                url_pattern=ctx.get('url_pattern', 'unknown'),
-                waf_detected=ctx.get('waf_detected', False),
-                prev_findings=json.dumps(ctx.get('prev_findings', []))[:500],
+                url_pattern=ctx.get("url_pattern", "unknown"),
+                waf_detected=ctx.get("waf_detected", False),
+                prev_findings=json.dumps(ctx.get("prev_findings", []))[:500],
                 portswigger_context=ps_context[:3000],
                 num_payloads=num_payloads,
             )
 
             result = llm.generate_json(prompt)
             if result and isinstance(result, dict):
-                payloads = result.get('payloads', [])
-                logger.info(f'SmartEngine: Generated {len(payloads)} smart payloads for {vuln_type}')
+                payloads = result.get("payloads", [])
+                logger.info(
+                    f"SmartEngine: Generated {len(payloads)} smart payloads for {vuln_type}"
+                )
                 return payloads
         except Exception as e:
-            logger.debug(f'Smart payload generation failed: {e}')
+            logger.debug(f"Smart payload generation failed: {e}")
 
         return []
 
-    def generate_waf_bypass(self, payload: str, vuln_type: str,
-                             waf_indicators: str = '',
-                             blocked_response: str = '',
-                             num_variants: int = 5) -> List[Dict]:
+    def generate_waf_bypass(
+        self,
+        payload: str,
+        vuln_type: str,
+        waf_indicators: str = "",
+        blocked_response: str = "",
+        num_variants: int = 5,
+    ) -> List[Dict]:
         """Generate WAF bypass variants using LLM + PortSwigger techniques.
 
         Args:
@@ -499,20 +535,24 @@ class SmartEngine:
         try:
             # Get WAF bypass context from PortSwigger
             self._load_knowledge_base()
-            bypass_context = ''
+            bypass_context = ""
             if self._portswigger_kb:
-                labs = self._portswigger_kb.get('labs', [])
+                labs = self._portswigger_kb.get("labs", [])
                 # Look for labs mentioning "bypass", "filter", "WAF"
                 bypass_labs = [
-                    lab for lab in labs
-                    if any(kw in (lab.get('title', '') + lab.get('description', '')).lower()
-                           for kw in ('bypass', 'filter', 'waf', 'block', 'firewall'))
+                    lab
+                    for lab in labs
+                    if any(
+                        kw
+                        in (lab.get("title", "") + lab.get("description", "")).lower()
+                        for kw in ("bypass", "filter", "waf", "block", "firewall")
+                    )
                 ]
                 for lab in bypass_labs[:3]:
                     bypass_context += f"Lab: {lab.get('title', '')}\n"
-                    for step in lab.get('solution_steps', [])[:3]:
+                    for step in lab.get("solution_steps", [])[:3]:
                         bypass_context += f"  - {step[:150]}\n"
-                    for p in lab.get('payloads', [])[:2]:
+                    for p in lab.get("payloads", [])[:2]:
                         bypass_context += f"  Payload: {p.get('code', '')[:200]}\n"
 
             prompt = WAF_BYPASS_PROMPT.format(
@@ -520,22 +560,26 @@ class SmartEngine:
                 vuln_type=vuln_type,
                 waf_indicators=waf_indicators[:500],
                 blocked_response=blocked_response[:500],
-                portswigger_bypass_context=bypass_context[:2000] or 'No specific bypass labs found.',
+                portswigger_bypass_context=bypass_context[:2000]
+                or "No specific bypass labs found.",
                 num_variants=num_variants,
             )
 
             result = llm.generate_json(prompt)
             if result and isinstance(result, dict):
-                bypasses = result.get('bypasses', [])
-                logger.info(f'SmartEngine: Generated {len(bypasses)} WAF bypass variants')
+                bypasses = result.get("bypasses", [])
+                logger.info(
+                    f"SmartEngine: Generated {len(bypasses)} WAF bypass variants"
+                )
                 return bypasses
         except Exception as e:
-            logger.debug(f'WAF bypass generation failed: {e}')
+            logger.debug(f"WAF bypass generation failed: {e}")
 
         return []
 
-    def verify_finding(self, vuln_data: Dict, features: Dict,
-                        response_data: Optional[Dict] = None) -> Tuple[str, float, str]:
+    def verify_finding(
+        self, vuln_data: Dict, features: Dict, response_data: Optional[Dict] = None
+    ) -> Tuple[str, float, str]:
         """Three-layer finding verification: ML + LLM + combined.
 
         Args:
@@ -560,54 +604,60 @@ class SmartEngine:
             try:
                 rd = response_data or {}
                 prompt = FINDING_VERIFICATION_PROMPT.format(
-                    vuln_type=vuln_data.get('vuln_type', 'Unknown'),
-                    url=vuln_data.get('url', ''),
-                    parameter=vuln_data.get('parameter', 'N/A'),
-                    payload=vuln_data.get('payload', 'N/A'),
-                    evidence=vuln_data.get('evidence', 'N/A'),
+                    vuln_type=vuln_data.get("vuln_type", "Unknown"),
+                    url=vuln_data.get("url", ""),
+                    parameter=vuln_data.get("parameter", "N/A"),
+                    payload=vuln_data.get("payload", "N/A"),
+                    evidence=vuln_data.get("evidence", "N/A"),
                     ml_is_tp=ml_is_tp,
-                    ml_confidence=f'{ml_confidence:.1f}',
-                    status_code=rd.get('status_code', 'N/A'),
-                    response_length=rd.get('content_length', 'N/A'),
-                    response_time=rd.get('response_time', 'N/A'),
-                    payload_reflected=rd.get('reflection_detected', 'N/A'),
-                    response_snippet=(rd.get('body_preview', '') or 'N/A')[:500],
+                    ml_confidence=f"{ml_confidence:.1f}",
+                    status_code=rd.get("status_code", "N/A"),
+                    response_length=rd.get("content_length", "N/A"),
+                    response_time=rd.get("response_time", "N/A"),
+                    payload_reflected=rd.get("reflection_detected", "N/A"),
+                    response_snippet=(rd.get("body_preview", "") or "N/A")[:500],
                 )
                 llm_result = llm.generate_json(prompt)
             except Exception as e:
-                logger.debug(f'LLM verification failed: {e}')
+                logger.debug(f"LLM verification failed: {e}")
 
         # Layer 3: Combine ML + LLM
         if llm_result and isinstance(llm_result, dict):
-            llm_verdict = llm_result.get('verdict', 'needs_manual_review')
-            llm_confidence = float(llm_result.get('confidence', 0.5))
-            llm_reasoning = llm_result.get('reasoning', '')
+            llm_verdict = llm_result.get("verdict", "needs_manual_review")
+            llm_confidence = float(llm_result.get("confidence", 0.5))
+            llm_reasoning = llm_result.get("reasoning", "")
 
             # Weighted combination: ML 40%, LLM 60%
-            ml_score = (ml_confidence / 100.0) if ml_is_tp else (1 - ml_confidence / 100.0)
-            llm_score = llm_confidence if llm_verdict == 'true_positive' else (1 - llm_confidence)
+            ml_score = (
+                (ml_confidence / 100.0) if ml_is_tp else (1 - ml_confidence / 100.0)
+            )
+            llm_score = (
+                llm_confidence
+                if llm_verdict == "true_positive"
+                else (1 - llm_confidence)
+            )
 
             combined = ml_score * 0.4 + llm_score * 0.6
 
             if combined >= 0.7:
-                verdict = 'true_positive'
+                verdict = "true_positive"
             elif combined <= 0.3:
-                verdict = 'false_positive'
+                verdict = "false_positive"
             else:
-                verdict = 'needs_manual_review'
+                verdict = "needs_manual_review"
 
             reasoning = (
                 f'ML: {"TP" if ml_is_tp else "FP"} ({ml_confidence:.0f}% confidence). '
-                f'LLM: {llm_verdict} ({llm_confidence:.0%}). '
-                f'{llm_reasoning}'
+                f"LLM: {llm_verdict} ({llm_confidence:.0%}). "
+                f"{llm_reasoning}"
             )
             return verdict, combined, reasoning
         else:
             # LLM unavailable — use ML only
             if ml_confidence >= 70:
-                verdict = 'true_positive' if ml_is_tp else 'false_positive'
+                verdict = "true_positive" if ml_is_tp else "false_positive"
             else:
-                verdict = 'true_positive'  # Default: report finding, let user decide
+                verdict = "true_positive"  # Default: report finding, let user decide
             reasoning = f'ML only: {"TP" if ml_is_tp else "FP"} ({ml_confidence:.0f}% confidence)'
             return verdict, ml_confidence / 100.0, reasoning
 
@@ -629,27 +679,31 @@ class SmartEngine:
             return None
 
         try:
-            vuln_type = finding.get('vuln_type', 'unknown')
-            ps_context = self.get_portswigger_context(vuln_type, max_labs=3, max_payloads=3)
+            vuln_type = finding.get("vuln_type", "unknown")
+            ps_context = self.get_portswigger_context(
+                vuln_type, max_labs=3, max_payloads=3
+            )
 
             prompt = ATTACK_NARRATIVE_PROMPT.format(
                 vuln_type=vuln_type,
-                severity=finding.get('severity', 'medium'),
-                url=finding.get('affected_url', finding.get('url', '')),
-                parameter=finding.get('parameter', 'N/A'),
-                payload=finding.get('payload', 'N/A'),
-                evidence=finding.get('evidence', finding.get('description', 'N/A')),
+                severity=finding.get("severity", "medium"),
+                url=finding.get("affected_url", finding.get("url", "")),
+                parameter=finding.get("parameter", "N/A"),
+                payload=finding.get("payload", "N/A"),
+                evidence=finding.get("evidence", finding.get("description", "N/A")),
                 portswigger_context=ps_context[:3000],
             )
 
             result = llm.generate_json(prompt)
             if result and isinstance(result, dict):
                 # Enrich with actual PortSwigger lab URLs
-                result['portswigger_labs'] = self.get_portswigger_labs_for_vuln(vuln_type)
-                logger.info(f'Attack narrative generated for {vuln_type}')
+                result["portswigger_labs"] = self.get_portswigger_labs_for_vuln(
+                    vuln_type
+                )
+                logger.info(f"Attack narrative generated for {vuln_type}")
                 return result
         except Exception as e:
-            logger.debug(f'Attack narrative generation failed: {e}')
+            logger.debug(f"Attack narrative generation failed: {e}")
 
         return None
 
@@ -672,16 +726,16 @@ class SmartEngine:
         # Add PortSwigger learning resources
         lab_refs = []
         for lab in labs[:5]:
-            title = lab.get('title', '')
-            url = lab.get('url', '')
-            difficulty = lab.get('difficulty', '')
+            title = lab.get("title", "")
+            url = lab.get("url", "")
+            difficulty = lab.get("difficulty", "")
             if title and url:
-                lab_refs.append(f'  • {title} [{difficulty}] — {url}')
+                lab_refs.append(f"  • {title} [{difficulty}] — {url}")
 
         if lab_refs:
             enriched += (
-                '\n\nPortSwigger Academy Resources (practice labs):\n'
-                + '\n'.join(lab_refs)
+                "\n\nPortSwigger Academy Resources (practice labs):\n"
+                + "\n".join(lab_refs)
             )
 
         return enriched

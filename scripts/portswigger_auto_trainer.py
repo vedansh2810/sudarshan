@@ -12,6 +12,7 @@ Produces 10,000+ pre-labeled samples by:
 Usage:
     python scripts/portswigger_auto_trainer.py
 """
+
 import os
 import sys
 import json
@@ -22,49 +23,48 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 # Ensure project root is on path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, project_root)
 
 from app import create_app
 from app.ml.false_positive_classifier import FalsePositiveClassifier
 
-
 # ── Category → vulnerability type mapping ───────────────────────────────
 CATEGORY_MAPPING = {
-    'sql-injection': 'sql_injection',
-    'cross-site-scripting': 'xss',
-    'os-command-injection': 'command_injection',
-    'directory-traversal': 'directory_traversal',
-    'file-path-traversal': 'directory_traversal',
-    'xxe': 'xxe',
-    'xml-external-entity-xxe-injection': 'xxe',
-    'ssrf': 'ssrf',
-    'server-side-request-forgery-ssrf': 'ssrf',
-    'cross-site-request-forgery-csrf': 'csrf',
-    'access-control-vulnerabilities': 'access_control',
-    'access-control': 'access_control',
-    'authentication': 'authentication',
-    'authentication-vulnerabilities': 'authentication',
-    'business-logic-vulnerabilities': 'business_logic',
-    'information-disclosure': 'information_disclosure',
-    'dom-based-vulnerabilities': 'xss',
-    'insecure-deserialization': 'deserialization',
-    'race-conditions': 'race_condition',
-    'server-side-template-injection': 'ssti',
-    'web-cache-poisoning': 'cache_poisoning',
-    'http-request-smuggling': 'request_smuggling',
-    'oauth-authentication': 'oauth',
-    'jwt': 'jwt',
-    'jwt-attacks': 'jwt',
-    'prototype-pollution': 'prototype_pollution',
-    'clickjacking': 'clickjacking',
-    'cors': 'cors',
-    'websockets': 'websockets',
-    'graphql-api-vulnerabilities': 'graphql',
-    'api-testing': 'api_testing',
-    'file-upload-vulnerabilities': 'file_upload',
-    'nosql-injection': 'nosql_injection',
-    'web-llm-attacks': 'llm_attacks',
+    "sql-injection": "sql_injection",
+    "cross-site-scripting": "xss",
+    "os-command-injection": "command_injection",
+    "directory-traversal": "directory_traversal",
+    "file-path-traversal": "directory_traversal",
+    "xxe": "xxe",
+    "xml-external-entity-xxe-injection": "xxe",
+    "ssrf": "ssrf",
+    "server-side-request-forgery-ssrf": "ssrf",
+    "cross-site-request-forgery-csrf": "csrf",
+    "access-control-vulnerabilities": "access_control",
+    "access-control": "access_control",
+    "authentication": "authentication",
+    "authentication-vulnerabilities": "authentication",
+    "business-logic-vulnerabilities": "business_logic",
+    "information-disclosure": "information_disclosure",
+    "dom-based-vulnerabilities": "xss",
+    "insecure-deserialization": "deserialization",
+    "race-conditions": "race_condition",
+    "server-side-template-injection": "ssti",
+    "web-cache-poisoning": "cache_poisoning",
+    "http-request-smuggling": "request_smuggling",
+    "oauth-authentication": "oauth",
+    "jwt": "jwt",
+    "jwt-attacks": "jwt",
+    "prototype-pollution": "prototype_pollution",
+    "clickjacking": "clickjacking",
+    "cors": "cors",
+    "websockets": "websockets",
+    "graphql-api-vulnerabilities": "graphql",
+    "api-testing": "api_testing",
+    "file-upload-vulnerabilities": "file_upload",
+    "nosql-injection": "nosql_injection",
+    "web-llm-attacks": "llm_attacks",
 }
 
 
@@ -83,7 +83,10 @@ class PortSwiggerLabTrainer:
         """Load the PortSwigger knowledge base."""
         if knowledge_base_path is None:
             knowledge_base_path = os.path.join(
-                project_root, 'data', 'portswigger_knowledge', 'portswigger_knowledge.json'
+                project_root,
+                "data",
+                "portswigger_knowledge",
+                "portswigger_knowledge.json",
             )
         self.knowledge_base_path = Path(knowledge_base_path)
 
@@ -93,20 +96,20 @@ class PortSwiggerLabTrainer:
                 "Run Task 1 first: python scripts/portswigger_scraper.py"
             )
 
-        with open(self.knowledge_base_path, 'r', encoding='utf-8') as f:
+        with open(self.knowledge_base_path, "r", encoding="utf-8") as f:
             self.knowledge_base = json.load(f)
 
-        self.labs = self.knowledge_base.get('labs', [])
+        self.labs = self.knowledge_base.get("labs", [])
         print(f"[+] Loaded {len(self.labs)} labs from knowledge base")
 
         # Track created payloads to avoid duplicates
         self._seen_hashes = set()
         self._stats = {
-            'true_positives': 0,
-            'false_positives': 0,
-            'skipped_short': 0,
-            'skipped_duplicate': 0,
-            'errors': 0,
+            "true_positives": 0,
+            "false_positives": 0,
+            "skipped_short": 0,
+            "skipped_duplicate": 0,
+            "errors": 0,
         }
 
     # ── Feature Extraction ──────────────────────────────────────────────
@@ -123,19 +126,36 @@ class PortSwiggerLabTrainer:
           status_changed, length_diff, length_ratio,
           error_count, has_db_error, payload_reflected
         """
-        category = lab.get('category', '')
-        difficulty = lab.get('difficulty', 'apprentice')
+        category = lab.get("category", "")
+        difficulty = lab.get("difficulty", "apprentice")
 
         # ── Payload-derived features ──
         payload_length = len(payload)
-        payload_special_chars = sum(1 for c in payload if not c.isalnum() and c != ' ')
-        payload_has_script_tag = int('<script' in payload.lower() or 'javascript:' in payload.lower())
-        payload_has_sql_keyword = int(any(
-            kw in payload.upper()
-            for kw in ['SELECT', 'UNION', 'INSERT', 'UPDATE', 'DELETE', 'DROP',
-                       'OR 1=1', "OR '1'='1", 'SLEEP', 'WAITFOR', 'BENCHMARK']
-        ))
-        payload_has_encoding = int('%' in payload or '\\u' in payload or '&#' in payload)
+        payload_special_chars = sum(1 for c in payload if not c.isalnum() and c != " ")
+        payload_has_script_tag = int(
+            "<script" in payload.lower() or "javascript:" in payload.lower()
+        )
+        payload_has_sql_keyword = int(
+            any(
+                kw in payload.upper()
+                for kw in [
+                    "SELECT",
+                    "UNION",
+                    "INSERT",
+                    "UPDATE",
+                    "DELETE",
+                    "DROP",
+                    "OR 1=1",
+                    "OR '1'='1",
+                    "SLEEP",
+                    "WAITFOR",
+                    "BENCHMARK",
+                ]
+            )
+        )
+        payload_has_encoding = int(
+            "%" in payload or "\\u" in payload or "&#" in payload
+        )
 
         # ── Simulated response features (based on ground truth) ──
         baseline_status = 200
@@ -143,7 +163,7 @@ class PortSwiggerLabTrainer:
 
         if is_true_positive:
             # Successful exploit — response differs from baseline
-            if 'SLEEP' in payload.upper() or 'WAITFOR' in payload.upper():
+            if "SLEEP" in payload.upper() or "WAITFOR" in payload.upper():
                 test_status = 200
                 test_length = baseline_length + random.randint(-50, 50)
                 response_time = random.uniform(3.0, 6.0)
@@ -162,16 +182,16 @@ class PortSwiggerLabTrainer:
                 response_time = random.uniform(0.1, 0.5)
 
             # Error patterns — more for easier labs
-            if difficulty == 'apprentice':
+            if difficulty == "apprentice":
                 error_count = random.randint(1, 4)
-            elif difficulty == 'practitioner':
+            elif difficulty == "practitioner":
                 error_count = random.randint(0, 2)
             else:
                 error_count = random.randint(0, 1)
 
-            has_db_error = int(payload_has_sql_keyword and difficulty != 'expert')
+            has_db_error = int(payload_has_sql_keyword and difficulty != "expert")
             payload_reflected = int(
-                category in ('cross-site-scripting', 'dom-based-vulnerabilities')
+                category in ("cross-site-scripting", "dom-based-vulnerabilities")
                 or (payload_has_sql_keyword and random.random() > 0.3)
             )
         else:
@@ -188,27 +208,27 @@ class PortSwiggerLabTrainer:
         length_ratio = test_length / baseline_length if baseline_length > 0 else 1.0
 
         return {
-            'payload_length': payload_length,
-            'payload_special_chars': payload_special_chars,
-            'payload_has_script_tag': payload_has_script_tag,
-            'payload_has_sql_keyword': payload_has_sql_keyword,
-            'payload_has_encoding': payload_has_encoding,
-            'baseline_status': baseline_status,
-            'baseline_length': baseline_length,
-            'test_status': test_status,
-            'test_length': test_length,
-            'response_time': response_time,
-            'status_changed': status_changed,
-            'length_diff': length_diff,
-            'length_ratio': length_ratio,
-            'error_count': error_count,
-            'has_db_error': has_db_error,
-            'payload_reflected': payload_reflected,
+            "payload_length": payload_length,
+            "payload_special_chars": payload_special_chars,
+            "payload_has_script_tag": payload_has_script_tag,
+            "payload_has_sql_keyword": payload_has_sql_keyword,
+            "payload_has_encoding": payload_has_encoding,
+            "baseline_status": baseline_status,
+            "baseline_length": baseline_length,
+            "test_status": test_status,
+            "test_length": test_length,
+            "response_time": response_time,
+            "status_changed": status_changed,
+            "length_diff": length_diff,
+            "length_ratio": length_ratio,
+            "error_count": error_count,
+            "has_db_error": has_db_error,
+            "payload_reflected": payload_reflected,
         }
 
     # ── Negative Payload Generation ─────────────────────────────────────
 
-    def _generate_negative_payloads(self, positive_payload, lab_title=''):
+    def _generate_negative_payloads(self, positive_payload, lab_title=""):
         """
         Generate mutated payloads that won't work (false positives).
 
@@ -221,27 +241,33 @@ class PortSwiggerLabTrainer:
         if "'" in positive_payload:
             negatives.append(positive_payload.replace("'", ""))
         elif '"' in positive_payload:
-            negatives.append(positive_payload.replace('"', ''))
+            negatives.append(positive_payload.replace('"', ""))
         else:
-            negatives.append(positive_payload + '_noquote')
+            negatives.append(positive_payload + "_noquote")
 
         # 2. Flip logical operators
-        if ' OR ' in positive_payload.upper():
-            negatives.append(positive_payload.replace(' OR ', ' AND NOT ', 1)
-                             .replace(' or ', ' and not ', 1))
-        if ' AND ' in positive_payload.upper():
-            negatives.append(positive_payload.replace(' AND ', ' XNOR ', 1)
-                             .replace(' and ', ' xnor ', 1))
+        if " OR " in positive_payload.upper():
+            negatives.append(
+                positive_payload.replace(" OR ", " AND NOT ", 1).replace(
+                    " or ", " and not ", 1
+                )
+            )
+        if " AND " in positive_payload.upper():
+            negatives.append(
+                positive_payload.replace(" AND ", " XNOR ", 1).replace(
+                    " and ", " xnor ", 1
+                )
+            )
 
         # 3. URL-encode everything (breaks most exploits)
-        negatives.append(urllib.parse.quote(positive_payload, safe=''))
+        negatives.append(urllib.parse.quote(positive_payload, safe=""))
 
         # 4. Truncate to half (incomplete payload)
         if len(positive_payload) > 6:
-            negatives.append(positive_payload[:len(positive_payload) // 2])
+            negatives.append(positive_payload[: len(positive_payload) // 2])
 
         # 5. Add garbage suffix that breaks syntax
-        negatives.append(positive_payload + 'XXXINVALID###')
+        negatives.append(positive_payload + "XXXINVALID###")
 
         # 6. Swap case (breaks case-sensitive exploits)
         swapped = positive_payload.swapcase()
@@ -249,32 +275,35 @@ class PortSwiggerLabTrainer:
             negatives.append(swapped)
 
         # 7. Comment out the exploit
-        negatives.append('/* ' + positive_payload + ' */')
+        negatives.append("/* " + positive_payload + " */")
 
         # 8. Double-encode
-        negatives.append(urllib.parse.quote(
-            urllib.parse.quote(positive_payload, safe=''), safe=''))
+        negatives.append(
+            urllib.parse.quote(urllib.parse.quote(positive_payload, safe=""), safe="")
+        )
 
         # 9. Prefix with benign text (breaks injection context)
-        negatives.append('safe_input_' + salt + '_' + positive_payload)
+        negatives.append("safe_input_" + salt + "_" + positive_payload)
 
         # 10. Truncate to first third
         if len(positive_payload) > 9:
-            negatives.append(positive_payload[:len(positive_payload) // 3])
+            negatives.append(positive_payload[: len(positive_payload) // 3])
 
         # 11. Reverse the payload
         negatives.append(positive_payload[::-1])
 
         # 12. Replace special chars with underscores
-        sanitized = ''.join(c if c.isalnum() else '_' for c in positive_payload)
+        sanitized = "".join(c if c.isalnum() else "_" for c in positive_payload)
         negatives.append(sanitized)
 
         # 13. Wrap in HTML-encoded container
-        negatives.append('&lt;' + positive_payload + '&gt;')
+        negatives.append("&lt;" + positive_payload + "&gt;")
 
         # 14. Add random noise in the middle
         mid = len(positive_payload) // 2
-        negatives.append(positive_payload[:mid] + '_BROKEN_' + salt + positive_payload[mid:])
+        negatives.append(
+            positive_payload[:mid] + "_BROKEN_" + salt + positive_payload[mid:]
+        )
 
         return negatives
 
@@ -284,92 +313,101 @@ class PortSwiggerLabTrainer:
         """Determine the attack technique from payload content."""
         p_upper = payload.upper()
 
-        if category == 'sql-injection':
-            if 'UNION' in p_upper:
-                return 'union-based'
-            if 'SLEEP' in p_upper or 'WAITFOR' in p_upper or 'BENCHMARK' in p_upper:
-                return 'time-based-blind'
-            if '1=1' in payload or "'1'='1'" in payload:
-                return 'boolean-blind'
-            return 'error-based'
-        elif category in ('cross-site-scripting', 'dom-based-vulnerabilities'):
-            if '<script' in payload.lower():
-                return 'script-tag'
-            if 'onerror' in payload.lower() or 'onload' in payload.lower():
-                return 'event-handler'
-            if 'javascript:' in payload.lower():
-                return 'protocol-handler'
-            return 'reflected-xss'
-        elif category == 'os-command-injection':
-            if '|' in payload:
-                return 'pipe-injection'
-            if '&&' in payload:
-                return 'command-chaining'
-            if ';' in payload:
-                return 'semicolon-injection'
-            return 'direct-injection'
-        elif category in ('directory-traversal', 'file-path-traversal'):
-            if 'php://' in payload.lower():
-                return 'php-wrapper'
-            if '%' in payload:
-                return 'encoded-traversal'
-            return 'basic-traversal'
-        elif category in ('xxe', 'xml-external-entity-xxe-injection'):
-            if 'SYSTEM' in payload:
-                return 'external-entity'
-            return 'parameter-entity'
-        elif category in ('ssrf', 'server-side-request-forgery-ssrf'):
-            if '169.254' in payload:
-                return 'cloud-metadata'
-            if '127.0.0.1' in payload or 'localhost' in payload:
-                return 'localhost-access'
-            return 'internal-network'
-        return 'standard'
+        if category == "sql-injection":
+            if "UNION" in p_upper:
+                return "union-based"
+            if "SLEEP" in p_upper or "WAITFOR" in p_upper or "BENCHMARK" in p_upper:
+                return "time-based-blind"
+            if "1=1" in payload or "'1'='1'" in payload:
+                return "boolean-blind"
+            return "error-based"
+        elif category in ("cross-site-scripting", "dom-based-vulnerabilities"):
+            if "<script" in payload.lower():
+                return "script-tag"
+            if "onerror" in payload.lower() or "onload" in payload.lower():
+                return "event-handler"
+            if "javascript:" in payload.lower():
+                return "protocol-handler"
+            return "reflected-xss"
+        elif category == "os-command-injection":
+            if "|" in payload:
+                return "pipe-injection"
+            if "&&" in payload:
+                return "command-chaining"
+            if ";" in payload:
+                return "semicolon-injection"
+            return "direct-injection"
+        elif category in ("directory-traversal", "file-path-traversal"):
+            if "php://" in payload.lower():
+                return "php-wrapper"
+            if "%" in payload:
+                return "encoded-traversal"
+            return "basic-traversal"
+        elif category in ("xxe", "xml-external-entity-xxe-injection"):
+            if "SYSTEM" in payload:
+                return "external-entity"
+            return "parameter-entity"
+        elif category in ("ssrf", "server-side-request-forgery-ssrf"):
+            if "169.254" in payload:
+                return "cloud-metadata"
+            if "127.0.0.1" in payload or "localhost" in payload:
+                return "localhost-access"
+            return "internal-network"
+        return "standard"
 
     # ── Hash for deduplication ──────────────────────────────────────────
 
     def _payload_hash(self, payload, is_tp):
         """Generate unique hash for a (payload, label) pair."""
         key = f"{payload}::{is_tp}"
-        return hashlib.md5(key.encode('utf-8', errors='replace')).hexdigest()
+        return hashlib.md5(key.encode("utf-8", errors="replace")).hexdigest()
 
     # ── Sample Creation ─────────────────────────────────────────────────
 
-    def _create_sample(self, db, ScanAttempt, scan_id, lab, payload,
-                       features, is_true_positive, notes=''):
+    def _create_sample(
+        self,
+        db,
+        ScanAttempt,
+        scan_id,
+        lab,
+        payload,
+        features,
+        is_true_positive,
+        notes="",
+    ):
         """Insert a training sample into the database."""
         # Dedup check
         h = self._payload_hash(payload, is_true_positive)
         if h in self._seen_hashes:
-            self._stats['skipped_duplicate'] += 1
+            self._stats["skipped_duplicate"] += 1
             return False
         self._seen_hashes.add(h)
 
-        category = lab.get('category', '')
-        vuln_type = CATEGORY_MAPPING.get(category, category.replace('-', '_'))
+        category = lab.get("category", "")
+        vuln_type = CATEGORY_MAPPING.get(category, category.replace("-", "_"))
         technique = self._extract_technique(payload, category)
 
         try:
             attempt = ScanAttempt(
                 scan_id=scan_id,
-                url=lab.get('url', 'https://portswigger.net/web-security/lab'),
-                parameter='test_param',
-                original_value='1',
+                url=lab.get("url", "https://portswigger.net/web-security/lab"),
+                parameter="test_param",
+                original_value="1",
                 payload=payload[:2048],  # truncate very long payloads
-                method='GET',
-                context='portswigger_lab',
-                status_code=features.get('test_status', 200),
-                content_length=features.get('test_length', 1000),
-                response_time=features.get('response_time', 0.5),
+                method="GET",
+                context="portswigger_lab",
+                status_code=features.get("test_status", 200),
+                content_length=features.get("test_length", 1000),
+                response_time=features.get("response_time", 0.5),
                 error_patterns=json.dumps([]),
-                reflection_detected=bool(features.get('payload_reflected', False)),
+                reflection_detected=bool(features.get("payload_reflected", False)),
                 vulnerability_found=is_true_positive,
                 vulnerability_type=vuln_type,
                 confidence=0.9 if is_true_positive else 0.2,
                 technique=technique,
-                severity='high' if is_true_positive else 'info',
+                severity="high" if is_true_positive else "info",
                 is_true_positive=is_true_positive,
-                verified_by='portswigger_academy',
+                verified_by="portswigger_academy",
                 verification_date=datetime.now(timezone.utc),
                 verification_notes=notes,
                 features=json.dumps(features),
@@ -377,14 +415,15 @@ class PortSwiggerLabTrainer:
             db.session.add(attempt)
             return True
         except Exception as e:
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
             print(f"    [!] Error: {e}")
             return False
 
     # ── Main Generation Loop ────────────────────────────────────────────
 
-    def generate_training_data(self, db, ScanAttempt, scan_id,
-                               categories=None, max_labs_per_category=None):
+    def generate_training_data(
+        self, db, ScanAttempt, scan_id, categories=None, max_labs_per_category=None
+    ):
         """
         Generate training data from all labs.
 
@@ -401,7 +440,7 @@ class PortSwiggerLabTrainer:
         # Group labs by category
         by_category = {}
         for lab in self.labs:
-            cat = lab.get('category', 'unknown')
+            cat = lab.get("category", "unknown")
             by_category.setdefault(cat, []).append(lab)
 
         if categories:
@@ -414,49 +453,72 @@ class PortSwiggerLabTrainer:
                 labs = labs[:max_labs_per_category]
 
             print(f"\n{'='*60}")
-            print(f"[{cat_idx}/{len(by_category)}] Category: {category} ({len(labs)} labs)")
+            print(
+                f"[{cat_idx}/{len(by_category)}] Category: {category} ({len(labs)} labs)"
+            )
             print(f"{'='*60}")
 
             cat_created = 0
 
             for i, lab in enumerate(labs, 1):
-                payloads = lab.get('payloads', [])
+                payloads = lab.get("payloads", [])
                 if not payloads:
                     continue
 
-                title = lab.get('title', 'Unknown')[:55]
-                difficulty = lab.get('difficulty', 'unknown')
-                print(f"  [{i}/{len(labs)}] {title} ({difficulty}) - {len(payloads)} payloads")
+                title = lab.get("title", "Unknown")[:55]
+                difficulty = lab.get("difficulty", "unknown")
+                print(
+                    f"  [{i}/{len(labs)}] {title} ({difficulty}) - {len(payloads)} payloads"
+                )
 
                 for payload_obj in payloads:
-                    code = payload_obj.get('code', '') if isinstance(payload_obj, dict) else str(payload_obj)
+                    code = (
+                        payload_obj.get("code", "")
+                        if isinstance(payload_obj, dict)
+                        else str(payload_obj)
+                    )
 
                     # Skip very short or empty payloads
                     if len(code.strip()) < 3:
-                        self._stats['skipped_short'] += 1
+                        self._stats["skipped_short"] += 1
                         continue
 
                     # ── TRUE POSITIVE ──
-                    tp_features = self._extract_features(code, lab, is_true_positive=True)
+                    tp_features = self._extract_features(
+                        code, lab, is_true_positive=True
+                    )
                     if self._create_sample(
-                        db, ScanAttempt, scan_id, lab, code,
-                        tp_features, is_true_positive=True,
-                        notes=f"PortSwigger: {lab.get('title', '')} ({difficulty})"
+                        db,
+                        ScanAttempt,
+                        scan_id,
+                        lab,
+                        code,
+                        tp_features,
+                        is_true_positive=True,
+                        notes=f"PortSwigger: {lab.get('title', '')} ({difficulty})",
                     ):
-                        self._stats['true_positives'] += 1
+                        self._stats["true_positives"] += 1
                         cat_created += 1
 
                     # ── FALSE POSITIVES (8 per TP) ──
                     negatives = self._generate_negative_payloads(
-                        code, lab_title=lab.get('title', ''))
+                        code, lab_title=lab.get("title", "")
+                    )
                     for neg in negatives[:8]:
-                        fp_features = self._extract_features(neg, lab, is_true_positive=False)
+                        fp_features = self._extract_features(
+                            neg, lab, is_true_positive=False
+                        )
                         if self._create_sample(
-                            db, ScanAttempt, scan_id, lab, neg,
-                            fp_features, is_true_positive=False,
-                            notes=f"Mutated from: {code[:50]}..."
+                            db,
+                            ScanAttempt,
+                            scan_id,
+                            lab,
+                            neg,
+                            fp_features,
+                            is_true_positive=False,
+                            notes=f"Mutated from: {code[:50]}...",
                         ):
-                            self._stats['false_positives'] += 1
+                            self._stats["false_positives"] += 1
                             cat_created += 1
 
                 # Commit every 10 labs
@@ -473,9 +535,9 @@ class PortSwiggerLabTrainer:
 
     def print_stats(self):
         """Print generation statistics."""
-        total = self._stats['true_positives'] + self._stats['false_positives']
-        tp = self._stats['true_positives']
-        fp = self._stats['false_positives']
+        total = self._stats["true_positives"] + self._stats["false_positives"]
+        tp = self._stats["true_positives"]
+        fp = self._stats["false_positives"]
         ratio = fp / tp if tp > 0 else 0
 
         print(f"\n{'='*60}")
@@ -497,7 +559,7 @@ def _ensure_placeholder_scan(db, ScanModel, UserModel):
     """
     # Check if placeholder already exists
     existing = ScanModel.query.filter_by(
-        target_url='https://portswigger.net/web-security'
+        target_url="https://portswigger.net/web-security"
     ).first()
     if existing:
         print(f"[+] Using existing placeholder scan (id={existing.id})")
@@ -507,9 +569,9 @@ def _ensure_placeholder_scan(db, ScanModel, UserModel):
     user = UserModel.query.first()
     if not user:
         user = UserModel(
-            supabase_uid='system-portswigger-trainer',
-            username='system',
-            email='system@sudarshan.local',
+            supabase_uid="system-portswigger-trainer",
+            username="system",
+            email="system@sudarshan.local",
             is_admin=True,
         )
         db.session.add(user)
@@ -518,12 +580,12 @@ def _ensure_placeholder_scan(db, ScanModel, UserModel):
 
     scan = ScanModel(
         user_id=user.id,
-        target_url='https://portswigger.net/web-security',
-        scan_mode='training',
-        scan_speed='fast',
+        target_url="https://portswigger.net/web-security",
+        scan_mode="training",
+        scan_speed="fast",
         crawl_depth=0,
-        status='completed',
-        score='A',
+        status="completed",
+        score="A",
         total_urls=0,
         tested_urls=0,
         vuln_count=0,
@@ -536,10 +598,10 @@ def _ensure_placeholder_scan(db, ScanModel, UserModel):
 
 def main():
     """Main entry point — run the auto-trainer."""
-    print('=' * 60)
-    print('  PortSwigger Lab Auto-Trainer')
-    print('  Generating ML training data from lab solutions')
-    print('=' * 60)
+    print("=" * 60)
+    print("  PortSwigger Lab Auto-Trainer")
+    print("  Generating ML training data from lab solutions")
+    print("=" * 60)
 
     app = create_app()
     with app.app_context():
@@ -551,15 +613,13 @@ def main():
 
         # Check if data already exists
         existing = ScanAttempt.query.filter_by(
-            verified_by='portswigger_academy'
+            verified_by="portswigger_academy"
         ).count()
         if existing > 0:
             print(f"\n[!] Found {existing} existing PortSwigger samples")
             resp = input("    Delete and regenerate? (y/N): ").strip().lower()
-            if resp == 'y':
-                ScanAttempt.query.filter_by(
-                    verified_by='portswigger_academy'
-                ).delete()
+            if resp == "y":
+                ScanAttempt.query.filter_by(verified_by="portswigger_academy").delete()
                 db.session.commit()
                 print(f"    Deleted {existing} samples")
             else:
@@ -586,15 +646,17 @@ def main():
         print(f"    False positives:  {stats['false_positives']}")
         print(f"    Unlabeled:        {stats['unlabeled']}")
 
-        if stats['by_type']:
+        if stats["by_type"]:
             print(f"\n  By Vulnerability Type:")
-            for entry in stats['by_type']:
-                print(f"    {entry['type']:25s} {entry['total']:5d} samples ({entry['true_positives']} TP)")
+            for entry in stats["by_type"]:
+                print(
+                    f"    {entry['type']:25s} {entry['total']:5d} samples ({entry['true_positives']} TP)"
+                )
 
         print(f"\n  Next steps:")
         print(f"    1. Train models: python scripts/train_ml_models.py")
         print(f"    2. Check stats:  http://localhost:5000/ml/stats")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

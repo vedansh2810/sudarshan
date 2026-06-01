@@ -7,15 +7,26 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.models.database import db, CrawledUrlModel
+import os
+from flask import current_app
 
 logger = logging.getLogger(__name__)
 
 
 class Crawler:
-    def __init__(self, target_url, max_depth=3, max_urls=150, timeout=8,
-                 delay=0.5, respect_robots=True, auth_config=None,
-                 threads=5, session=None):
-        self.target_url = target_url.rstrip('/')
+    def __init__(
+        self,
+        target_url,
+        max_depth=3,
+        max_urls=150,
+        timeout=8,
+        delay=0.5,
+        respect_robots=True,
+        auth_config=None,
+        threads=5,
+        session=None,
+    ):
+        self.target_url = target_url.rstrip("/")
         self.base_domain = urlparse(target_url).netloc
         self.max_depth = max_depth
         self.max_urls = max_urls
@@ -36,11 +47,23 @@ class Crawler:
         # Session management — reuse an authenticated session if provided
         self.session = session or requests.Session()
         if not session:
-            self.session.headers.update({
-                'User-Agent': 'Sudarshan-Scanner/1.0 (Security Research)',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-            })
-            self.session.verify = False
+            self.session.headers.update(
+                {
+                    "User-Agent": "Sudarshan-Scanner/1.0 (Security Research)",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                }
+            )
+            try:
+                allow_insecure = bool(current_app.config.get("ALLOW_INSECURE_TARGETS", False))
+            except RuntimeError:
+                allow_insecure = os.environ.get("ALLOW_INSECURE_TARGETS", "0") in (
+                    "1",
+                    "true",
+                    "True",
+                    "yes",
+                    "YES",
+                )
+            self.session.verify = not allow_insecure
 
         self.disallowed_paths = []
         # Skip robots.txt when an authenticated session is provided
@@ -59,24 +82,25 @@ class Crawler:
         and sorts query parameters."""
         parsed = urlparse(url)
         # Remove fragment
-        path = parsed.path.rstrip('/') or '/'
+        path = parsed.path.rstrip("/") or "/"
         # Sort query parameters for consistent comparison
         if parsed.query:
             params = parse_qs(parsed.query, keep_blank_values=True)
             sorted_query = urlencode(
-                {k: v[0] for k, v in sorted(params.items())},
-                doseq=False
+                {k: v[0] for k, v in sorted(params.items())}, doseq=False
             )
         else:
-            sorted_query = ''
-        return urlunparse((
-            parsed.scheme,
-            parsed.netloc,
-            path,
-            '',  # params
-            sorted_query,
-            ''  # fragment
-        ))
+            sorted_query = ""
+        return urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                path,
+                "",  # params
+                sorted_query,
+                "",  # fragment
+            )
+        )
 
     @staticmethod
     def _is_valid_extracted_url(url_str):
@@ -90,18 +114,30 @@ class Crawler:
             return False
         # Reject URLs containing JS syntax artifacts
         js_artifacts = [
-            '%7B', '%7D', '%5B', '%5D',  # URL-encoded { } [ ]
-            '.concat(', 'arguments[', 'function ', 'return ',
-            'void ', '===', '!==',
-            'useContext', 'createElement', 'prototype',
-            '=>', '?arguments', '%3E%3D',
+            "%7B",
+            "%7D",
+            "%5B",
+            "%5D",  # URL-encoded { } [ ]
+            ".concat(",
+            "arguments[",
+            "function ",
+            "return ",
+            "void ",
+            "===",
+            "!==",
+            "useContext",
+            "createElement",
+            "prototype",
+            "=>",
+            "?arguments",
+            "%3E%3D",
         ]
         url_lower = url_str.lower()
         for artifact in js_artifacts:
             if artifact.lower() in url_lower:
                 return False
         # Reject URLs with excessive percent-encoding (>15% of chars)
-        pct_count = url_str.count('%')
+        pct_count = url_str.count("%")
         if len(url_str) > 10 and pct_count / len(url_str) > 0.15:
             return False
         return True
@@ -116,24 +152,28 @@ class Crawler:
             robots_url = f"{self.target_url}/robots.txt"
             r = self.session.get(robots_url, timeout=self.timeout)
             if r.status_code == 200:
-                for line in r.text.split('\n'):
+                for line in r.text.split("\n"):
                     stripped = line.strip()
-                    if stripped.lower().startswith('disallow:'):
-                        path = stripped.split(':', 1)[1].strip()
+                    if stripped.lower().startswith("disallow:"):
+                        path = stripped.split(":", 1)[1].strip()
                         if path:
                             self.disallowed_paths.append(path)
                             # Also record for discovery (hidden paths)
-                            if path != '/' and not path.endswith('*'):
+                            if path != "/" and not path.endswith("*"):
                                 self._robots_discovered_paths.append(path)
-                    elif stripped.lower().startswith('allow:'):
-                        path = stripped.split(':', 1)[1].strip()
-                        if path and path != '/' and not path.endswith('*'):
+                    elif stripped.lower().startswith("allow:"):
+                        path = stripped.split(":", 1)[1].strip()
+                        if path and path != "/" and not path.endswith("*"):
                             self._robots_discovered_paths.append(path)
-                    elif stripped.lower().startswith('sitemap:'):
-                        sitemap_url = stripped.split(':', 1)[1].strip()
+                    elif stripped.lower().startswith("sitemap:"):
+                        sitemap_url = stripped.split(":", 1)[1].strip()
                         # Handle "Sitemap: https://..." (the split removes the https:)
-                        if not sitemap_url.startswith('http'):
-                            sitemap_url = stripped.split(' ', 1)[1].strip() if ' ' in stripped else ''
+                        if not sitemap_url.startswith("http"):
+                            sitemap_url = (
+                                stripped.split(" ", 1)[1].strip()
+                                if " " in stripped
+                                else ""
+                            )
                         if sitemap_url:
                             self._sitemap_urls.append(sitemap_url)
                 logger.info(
@@ -155,16 +195,16 @@ class Crawler:
         in robots.txt.  Returns a list of discovered same-domain URLs.
         """
         urls = set()
-        sitemap_locs = list(getattr(self, '_sitemap_urls', []))
+        sitemap_locs = list(getattr(self, "_sitemap_urls", []))
         sitemap_locs.append(f"{self.target_url}/sitemap.xml")
 
         for sitemap_url in sitemap_locs:
             try:
-                resp = self.session.get(sitemap_url, timeout=self.timeout, verify=False)
+                resp = self.session.get(sitemap_url, timeout=self.timeout, verify=self.session.verify)
                 if resp.status_code != 200:
                     continue
                 # Extract <loc> tags (works for both sitemap index and url entries)
-                for match in re.findall(r'<loc>\s*([^<]+?)\s*</loc>', resp.text, re.I):
+                for match in re.findall(r"<loc>\s*([^<]+?)\s*</loc>", resp.text, re.I):
                     normalized = self._normalize_url(match.strip())
                     if self._is_same_domain(normalized):
                         urls.add(normalized)
@@ -178,7 +218,7 @@ class Crawler:
         parsed = urlparse(url)
         for path in self.disallowed_paths:
             # Skip overly-broad rules like '/' that would block everything
-            if path == '/':
+            if path == "/":
                 continue
             if parsed.path.startswith(path):
                 return False
@@ -190,20 +230,23 @@ class Crawler:
         if not self.auth_config:
             return
         try:
-            login_url = self.auth_config.get('login_url', '')
-            username = self.auth_config.get('username', '')
-            password = self.auth_config.get('password', '')
-            username_field = self.auth_config.get('username_field', 'username')
-            password_field = self.auth_config.get('password_field', 'password')
+            login_url = self.auth_config.get("login_url", "")
+            username = self.auth_config.get("username", "")
+            password = self.auth_config.get("password", "")
+            username_field = self.auth_config.get("username_field", "username")
+            password_field = self.auth_config.get("password_field", "password")
             if login_url:
-                resp = self.session.post(login_url, data={
-                    username_field: username,
-                    password_field: password
-                }, timeout=self.timeout)
+                resp = self.session.post(
+                    login_url,
+                    data={username_field: username, password_field: password},
+                    timeout=self.timeout,
+                )
                 if resp.status_code == 200:
                     logger.info(f"Authenticated to {login_url}")
                 else:
-                    logger.warning(f"Authentication may have failed: status {resp.status_code}")
+                    logger.warning(
+                        f"Authentication may have failed: status {resp.status_code}"
+                    )
         except requests.exceptions.RequestException as e:
             logger.error(f"Authentication failed: {e}")
 
@@ -217,10 +260,32 @@ class Crawler:
         Returns True if HTML, False if binary/non-HTML, None if HEAD fails."""
         # Skip for common non-HTML extensions
         skip_extensions = {
-            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp',
-            '.css', '.js', '.woff', '.woff2', '.ttf', '.eot',
-            '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.avi',
-            '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".svg",
+            ".ico",
+            ".webp",
+            ".css",
+            ".js",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
+            ".pdf",
+            ".zip",
+            ".tar",
+            ".gz",
+            ".mp3",
+            ".mp4",
+            ".avi",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx",
+            ".ppt",
+            ".pptx",
         }
         parsed_path = urlparse(url).path.lower()
         for ext in skip_extensions:
@@ -229,11 +294,11 @@ class Crawler:
 
         try:
             resp = self.session.head(url, timeout=self.timeout, allow_redirects=True)
-            content_type = resp.headers.get('content-type', '')
+            content_type = resp.headers.get("content-type", "")
             # If no content-type or it's HTML, allow through
             if not content_type:
                 return None  # Can't determine, will try GET
-            return 'text/html' in content_type or 'application/xhtml' in content_type
+            return "text/html" in content_type or "application/xhtml" in content_type
         except Exception:
             return None  # Can't determine, will try GET
 
@@ -243,24 +308,27 @@ class Crawler:
         links = set()
         try:
             try:
-                soup = BeautifulSoup(html, 'lxml')
+                soup = BeautifulSoup(html, "lxml")
             except Exception:
-                soup = BeautifulSoup(html, 'html.parser')
+                soup = BeautifulSoup(html, "html.parser")
 
             # Standard href-bearing tags
-            for tag in soup.find_all(['a', 'link'], href=True):
-                href = tag['href']
+            for tag in soup.find_all(["a", "link"], href=True):
+                href = tag["href"]
                 full_url = urljoin(base_url, href)
                 # Skip logout/session-destroying URLs to preserve auth
                 path_lower = urlparse(full_url).path.lower()
-                if any(skip in path_lower for skip in ['logout', 'signout', 'sign_out', 'log_out']):
+                if any(
+                    skip in path_lower
+                    for skip in ["logout", "signout", "sign_out", "log_out"]
+                ):
                     continue
                 if self._is_same_domain(full_url):
                     links.add(self._normalize_url(full_url))
 
             # Resource tags
-            for tag in soup.find_all(['script', 'img', 'iframe'], src=True):
-                src = tag['src']
+            for tag in soup.find_all(["script", "img", "iframe"], src=True):
+                src = tag["src"]
                 full_url = urljoin(base_url, src)
                 if self._is_same_domain(full_url):
                     links.add(self._normalize_url(full_url))
@@ -274,25 +342,25 @@ class Crawler:
                 r'\.open\s*\(\s*["\']([^"\']+)["\']',
                 r'["\'](/(?:api|auth|admin|user|account)[^"\' ]*)["\']',
             ]
-            for script in soup.find_all('script'):
-                js_text = script.string or ''
+            for script in soup.find_all("script"):
+                js_text = script.string or ""
                 # Also handle external JS files
-                if not js_text and script.get('src'):
-                    js_src = urljoin(base_url, script['src'])
+                if not js_text and script.get("src"):
+                    js_src = urljoin(base_url, script["src"])
                     if self._is_same_domain(js_src):
                         try:
                             js_resp = self.session.get(
-                                js_src, timeout=self.timeout, verify=False
+                                js_src, timeout=self.timeout, verify=self.session.verify
                             )
                             if js_resp.status_code == 200:
-                                js_text = js_resp.text or ''
+                                js_text = js_resp.text or ""
                         except Exception:
                             pass
                 if js_text:
                     for pattern in js_url_patterns:
                         for js_url in re.findall(pattern, js_text, re.IGNORECASE):
                             # Skip data URIs, fragments, and template literals
-                            if js_url.startswith(('data:', 'javascript:', '#', '${')):
+                            if js_url.startswith(("data:", "javascript:", "#", "${")):
                                 continue
                             if not self._is_valid_extracted_url(js_url):
                                 continue
@@ -301,8 +369,14 @@ class Crawler:
                                 links.add(self._normalize_url(full_url))
 
             # Extract URLs from HTML comments
-            for comment in soup.find_all(string=lambda t: t and hasattr(t, 'extract') and str(type(t).__name__) == 'Comment'):
-                comment_urls = re.findall(r'(?:href|src|action)\s*=\s*["\']([^"\']+)["\']', str(comment))
+            for comment in soup.find_all(
+                string=lambda t: t
+                and hasattr(t, "extract")
+                and str(type(t).__name__) == "Comment"
+            ):
+                comment_urls = re.findall(
+                    r'(?:href|src|action)\s*=\s*["\']([^"\']+)["\']', str(comment)
+                )
                 for curl in comment_urls:
                     full_url = urljoin(base_url, curl)
                     if self._is_same_domain(full_url):
@@ -316,34 +390,30 @@ class Crawler:
         forms = []
         try:
             try:
-                soup = BeautifulSoup(html, 'lxml')
+                soup = BeautifulSoup(html, "lxml")
             except Exception:
-                soup = BeautifulSoup(html, 'html.parser')
-            for form in soup.find_all('form'):
-                action = form.get('action', '')
-                method = form.get('method', 'get').lower()
+                soup = BeautifulSoup(html, "html.parser")
+            for form in soup.find_all("form"):
+                action = form.get("action", "")
+                method = form.get("method", "get").lower()
                 # Strip fragment from action (e.g., action="#" -> current page)
-                if action == '#' or action == '':
-                    form_url = base_url.split('#')[0].split('?')[0]
+                if action == "#" or action == "":
+                    form_url = base_url.split("#")[0].split("?")[0]
                 else:
-                    form_url = urljoin(base_url, action).split('#')[0]
+                    form_url = urljoin(base_url, action).split("#")[0]
                 inputs = []
-                for inp in form.find_all(['input', 'textarea', 'select']):
-                    inp_name = inp.get('name', '')
-                    inp_type = inp.get('type', 'text')
-                    inp_value = inp.get('value', '')
+                for inp in form.find_all(["input", "textarea", "select"]):
+                    inp_name = inp.get("name", "")
+                    inp_type = inp.get("type", "text")
+                    inp_value = inp.get("value", "")
                     if inp_name:
-                        inputs.append({
-                            'name': inp_name,
-                            'type': inp_type,
-                            'value': inp_value
-                        })
+                        inputs.append(
+                            {"name": inp_name, "type": inp_type, "value": inp_value}
+                        )
                 if inputs:
-                    forms.append({
-                        'action': form_url,
-                        'method': method,
-                        'inputs': inputs
-                    })
+                    forms.append(
+                        {"action": form_url, "method": method, "inputs": inputs}
+                    )
         except Exception as e:
             logger.debug(f"Error extracting forms from {base_url}: {e}")
         return forms
@@ -352,10 +422,10 @@ class Crawler:
         params = []
         parsed = urlparse(url)
         if parsed.query:
-            for param in parsed.query.split('&'):
-                if '=' in param:
-                    name, value = param.split('=', 1)
-                    params.append({'name': name, 'value': value, 'url': url})
+            for param in parsed.query.split("&"):
+                if "=" in param:
+                    name, value = param.split("=", 1)
+                    params.append({"name": name, "value": value, "url": url})
         return params
 
     # ── Retry Logic ──────────────────────────────────────────────────
@@ -365,24 +435,30 @@ class Crawler:
         for attempt in range(max_retries + 1):
             try:
                 time.sleep(self.delay)
-                response = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+                response = self.session.get(
+                    url, timeout=self.timeout, allow_redirects=True
+                )
                 if response.status_code >= 500 and attempt < max_retries:
-                    wait = (2 ** attempt) * 0.5
-                    logger.debug(f"Server error {response.status_code} for {url}, retrying in {wait}s")
+                    wait = (2**attempt) * 0.5
+                    logger.debug(
+                        f"Server error {response.status_code} for {url}, retrying in {wait}s"
+                    )
                     time.sleep(wait)
                     continue
                 return response
             except requests.exceptions.Timeout:
                 if attempt < max_retries:
-                    wait = (2 ** attempt) * 0.5
+                    wait = (2**attempt) * 0.5
                     logger.debug(f"Timeout for {url}, retrying in {wait}s")
                     time.sleep(wait)
                 else:
-                    logger.warning(f"Timeout for {url} after {max_retries + 1} attempts")
+                    logger.warning(
+                        f"Timeout for {url} after {max_retries + 1} attempts"
+                    )
                     return None
             except requests.exceptions.ConnectionError as e:
                 if attempt < max_retries:
-                    wait = (2 ** attempt) * 0.5
+                    wait = (2**attempt) * 0.5
                     time.sleep(wait)
                 else:
                     logger.warning(f"Connection error for {url}: {e}")
@@ -401,7 +477,10 @@ class Crawler:
 
         normalized = self._normalize_url(url)
         with self._lock:
-            if normalized in self.visited_urls or len(self.discovered_urls) >= self.max_urls:
+            if (
+                normalized in self.visited_urls
+                or len(self.discovered_urls) >= self.max_urls
+            ):
                 return None
             self.visited_urls.add(normalized)
 
@@ -420,34 +499,32 @@ class Crawler:
         if response is None:
             return None
 
-        url_info = {
-            'url': url,
-            'status_code': response.status_code,
-            'depth': depth
-        }
+        url_info = {"url": url, "status_code": response.status_code, "depth": depth}
 
         new_links = []
 
         if response.status_code == 200:
-            content_type = response.headers.get('content-type', '')
-            if 'text/html' in content_type:
+            content_type = response.headers.get("content-type", "")
+            if "text/html" in content_type:
                 links = self._extract_links(response.text, url)
                 forms = self._extract_forms(response.text, url)
                 params = self._extract_params(url)
 
-                url_info['forms'] = len(forms)
-                url_info['params'] = len(params)
+                url_info["forms"] = len(forms)
+                url_info["params"] = len(params)
 
                 with self._lock:
                     self.forms.extend(forms)
                     self.injectable_points.extend(params)
                     for form in forms:
-                        self.injectable_points.append({
-                            'type': 'form',
-                            'action': form['action'],
-                            'method': form['method'],
-                            'inputs': form['inputs']
-                        })
+                        self.injectable_points.append(
+                            {
+                                "type": "form",
+                                "action": form["action"],
+                                "method": form["method"],
+                                "inputs": form["inputs"],
+                            }
+                        )
 
                 for link in links:
                     with self._lock:
@@ -463,11 +540,11 @@ class Crawler:
 
     def crawl(self, scan_id=None, callback=None):
         """Crawl the target URL using concurrent threads.
-        
+
         Args:
             scan_id: Optional scan ID for persisting results to DB.
             callback: Optional function(url, count) called for each discovered URL.
-        
+
         Returns:
             Tuple of (discovered_urls, injectable_points).
         """
@@ -484,9 +561,9 @@ class Crawler:
             logger.debug(f"Sitemap seeding failed: {e}")
 
         # Seed queue with robots.txt discovered paths
-        for rpath in getattr(self, '_robots_discovered_paths', []):
+        for rpath in getattr(self, "_robots_discovered_paths", []):
             try:
-                rurl = self.target_url.rstrip('/') + rpath
+                rurl = self.target_url.rstrip("/") + rpath
                 normalized = self._normalize_url(rurl)
                 if normalized not in self.visited_urls:
                     queue.append((rurl, 1))
@@ -528,8 +605,8 @@ class Crawler:
                                     scan_id=scan_id,
                                     url=url,
                                     status_code=status_code,
-                                    forms_found=url_info.get('forms', 0),
-                                    params_found=url_info.get('params', 0)
+                                    forms_found=url_info.get("forms", 0),
+                                    params_found=url_info.get("params", 0),
                                 )
                                 db.session.add(crawled)
                                 db.session.commit()
@@ -557,7 +634,7 @@ class Crawler:
         seen_points = set()
         unique_points = []
         for point in self.injectable_points:
-            if point.get('type') == 'form':
+            if point.get("type") == "form":
                 key = f"form:{point.get('url')}:{point.get('method')}:{','.join(i['name'] for i in point.get('inputs', []))}"
             else:
                 key = f"param:{point.get('url')}:{point.get('name')}"

@@ -12,7 +12,7 @@
   <!-- Preconnect + DNS prefetch for fast font/CDN loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+
 
   <!-- Fix #21/#22: Preload critical font files for faster rendering -->
   <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style">
@@ -25,43 +25,9 @@
   <!-- Fix #20/#23: Local custom CSS (cacheable, no FOUC for custom styles) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/sudarshan.css') }}">
 
-  <!-- Tailwind CDN: compiles utility classes before first paint.
-       ⚠ PRODUCTION WARNING: Replace with a pre-built CSS file via
-       `npx tailwindcss -o dist/tailwind.css --minify` for production.
-       The CDN is ~300ms slower and not recommended for production use. -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: '#00e5ff',
-            'accent-purple': '#a855f7',
-            'bg-primary': '#060611',
-            'bg-secondary': '#0a0a1e',
-            'bg-card': '#0d0d24',
-          },
-          fontFamily: {
-            display: ['Space Grotesk', 'sans-serif'],
-            body: ['Inter', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          keyframes: {
-            'fade-in-up': { '0%': { opacity: 0, transform: 'translateY(20px)' }, '100%': { opacity: 1, transform: 'translateY(0)' }},
-            'pulse-glow': { '0%,100%': { boxShadow: '0 0 10px rgba(0,229,255,0.3)' }, '50%': { boxShadow: '0 0 25px rgba(0,229,255,0.6)' }},
-            'slide-in': { '0%': { opacity: 0, transform: 'translateX(-20px)' }, '100%': { opacity: 1, transform: 'translateX(0)' }},
-            'nav-shimmer': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(200%)' }},
-          },
-          animation: {
-            'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
-            'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-            'slide-in': 'slide-in 0.3s ease-out forwards',
-            'nav-shimmer': 'nav-shimmer 2s ease-in-out infinite',
-          },
-        }
-      }
-    }
-  </script>
+  <!-- Pre-built Tailwind CSS (replaces CDN for reliability and performance).
+       Rebuild after template changes: npm run build:css -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind-built.css') }}">
 
   <!-- Fix #23: Shared JS utilities (sanitizer, password toggle) -->
   <script src="{{ url_for('static', filename='js/utils.js') }}"></script>

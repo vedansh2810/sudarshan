@@ -5,6 +5,7 @@ Responsibilities:
 - SSE event streaming (Redis pub/sub or in-memory fallback)
 - Scan status queries
 """
+
 import threading
 import queue
 import time
@@ -38,7 +39,11 @@ from app.scanner.dvwa_auth import DVWAAuth
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
 
-from app.monitoring.metrics import track_scan_started, track_scan_completed, track_vulnerability
+from app.monitoring.metrics import (
+    track_scan_started,
+    track_scan_completed,
+    track_vulnerability,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +53,15 @@ class ScanManager:
     _lock = threading.Lock()
 
     def __init__(self):
-        self.active_scans = {}  # scan_id -> scan context (threading-only fallback when NO Redis)
-        self.sse_queues = {}    # scan_id -> list of queues (threading-only fallback when NO Redis)
-        self.event_history = defaultdict(list)  # in-memory fallback only when Redis unavailable
+        self.active_scans = (
+            {}
+        )  # scan_id -> scan context (threading-only fallback when NO Redis)
+        self.sse_queues = (
+            {}
+        )  # scan_id -> list of queues (threading-only fallback when NO Redis)
+        self.event_history = defaultdict(
+            list
+        )  # in-memory fallback only when Redis unavailable
         self._redis = None
         self._redis_checked = False
         self._use_celery = False
@@ -70,6 +81,7 @@ class ScanManager:
         self._redis_checked = True
         try:
             import redis as redis_lib
+
             r = redis_lib.from_url(Config.REDIS_URL, socket_connect_timeout=2)
             r.ping()
             self._redis = r
@@ -82,12 +94,20 @@ class ScanManager:
         return self._redis
 
     def _get_speed_config(self, speed):
-        return Config.SCAN_SPEEDS.get(speed, Config.SCAN_SPEEDS['balanced'])
+        return Config.SCAN_SPEEDS.get(speed, Config.SCAN_SPEEDS["balanced"])
 
     # ─── Start / Pause / Resume / Stop ──────────────────────────────────
 
-    def start_scan(self, scan_id, target_url, scan_mode, scan_speed,
-                   crawl_depth, selected_checks=None, dvwa_security='low'):
+    def start_scan(
+        self,
+        scan_id,
+        target_url,
+        scan_mode,
+        scan_speed,
+        crawl_depth,
+        selected_checks=None,
+        dvwa_security="low",
+    ):
         if scan_id in self.active_scans:
             return False
 
@@ -96,6 +116,7 @@ class ScanManager:
         if self._use_celery and redis:
             # ── Celery mode: dispatch to worker ──
             from app.tasks import run_scan_task
+
             run_scan_task.delay(
                 scan_id=scan_id,
                 target_url=target_url,
@@ -103,55 +124,54 @@ class ScanManager:
                 scan_speed=scan_speed,
                 crawl_depth=crawl_depth,
                 selected_checks=selected_checks or Config.VULNERABILITY_CHECKS,
-                dvwa_security=dvwa_security
+                dvwa_security=dvwa_security,
             )
             # Track state in Redis hash — no in-memory dict needed for Celery scans
             try:
-                redis.hset(f'scan:{scan_id}:state', mapping={
-                    'status': 'running',
-                    'mode': 'celery',
-                    'start_time': str(time.time()),
-                    'tested_urls': '0',
-                    'total_urls': '0',
-                    'findings': '0',
-                })
-                redis.expire(f'scan:{scan_id}:state', 86400)  # 24h TTL
+                redis.hset(
+                    f"scan:{scan_id}:state",
+                    mapping={
+                        "status": "running",
+                        "mode": "celery",
+                        "start_time": str(time.time()),
+                        "tested_urls": "0",
+                        "total_urls": "0",
+                        "findings": "0",
+                    },
+                )
+                redis.expire(f"scan:{scan_id}:state", 86400)  # 24h TTL
             except Exception as e:
                 logger.warning(f"Failed to store scan state in Redis: {e}")
             return True
         else:
             # ── Threading fallback ──
             ctx = {
-                'scan_id': scan_id,
-                'target_url': target_url,
-                'scan_mode': scan_mode,
-                'scan_speed': scan_speed,
-                'crawl_depth': crawl_depth,
-                'selected_checks': selected_checks or Config.VULNERABILITY_CHECKS,
-                'status': 'running',
-                'paused': False,
-                'stopped': False,
-                'pause_event': threading.Event(),
-                'start_time': time.time(),
-                'findings': [],
-                'tested_urls': 0,
-                'total_urls': 0,
-                'dvwa_security': dvwa_security,
-                'mode': 'threading',
+                "scan_id": scan_id,
+                "target_url": target_url,
+                "scan_mode": scan_mode,
+                "scan_speed": scan_speed,
+                "crawl_depth": crawl_depth,
+                "selected_checks": selected_checks or Config.VULNERABILITY_CHECKS,
+                "status": "running",
+                "paused": False,
+                "stopped": False,
+                "pause_event": threading.Event(),
+                "start_time": time.time(),
+                "findings": [],
+                "tested_urls": 0,
+                "total_urls": 0,
+                "dvwa_security": dvwa_security,
+                "mode": "threading",
             }
-            ctx['pause_event'].set()
+            ctx["pause_event"].set()
             self.active_scans[scan_id] = ctx
             self.sse_queues[scan_id] = []
 
             # Capture the Flask app for use in the background thread
             app = current_app._get_current_object()
-            ctx['_app'] = app
+            ctx["_app"] = app
 
-            thread = threading.Thread(
-                target=self._run_scan,
-                args=(ctx,),
-                daemon=True
-            )
+            thread = threading.Thread(target=self._run_scan, args=(ctx,), daemon=True)
             thread.start()
             return True
 
@@ -159,75 +179,76 @@ class ScanManager:
         redis = self._get_redis()
         if redis:
             # Redis-backed control for both Celery and threading modes
-            redis.set(f'scan:{scan_id}:control', 'paused')
-            Scan.update_status(scan_id, 'paused')
+            redis.set(f"scan:{scan_id}:control", "paused")
+            Scan.update_status(scan_id, "paused")
             # Also update in-memory ctx if threading mode with Redis
             ctx = self.active_scans.get(scan_id)
-            if ctx and ctx.get('mode') == 'threading':
-                ctx['paused'] = True
-                ctx['pause_event'].clear()
-                ctx['status'] = 'paused'
-                self._emit(scan_id, 'log', '[~] Scan paused by user', 'warning')
+            if ctx and ctx.get("mode") == "threading":
+                ctx["paused"] = True
+                ctx["pause_event"].clear()
+                ctx["status"] = "paused"
+                self._emit(scan_id, "log", "[~] Scan paused by user", "warning")
             return True
         # Pure in-memory fallback (no Redis at all)
         ctx = self.active_scans.get(scan_id)
-        if ctx and ctx['status'] == 'running':
-            ctx['paused'] = True
-            ctx['pause_event'].clear()
-            ctx['status'] = 'paused'
-            Scan.update_status(scan_id, 'paused')
-            self._emit(scan_id, 'log', '[~] Scan paused by user', 'warning')
+        if ctx and ctx["status"] == "running":
+            ctx["paused"] = True
+            ctx["pause_event"].clear()
+            ctx["status"] = "paused"
+            Scan.update_status(scan_id, "paused")
+            self._emit(scan_id, "log", "[~] Scan paused by user", "warning")
             return True
         return False
 
     def resume_scan(self, scan_id):
         redis = self._get_redis()
         if redis:
-            redis.delete(f'scan:{scan_id}:control')
-            Scan.update_status(scan_id, 'running')
+            redis.delete(f"scan:{scan_id}:control")
+            Scan.update_status(scan_id, "running")
             ctx = self.active_scans.get(scan_id)
-            if ctx and ctx.get('mode') == 'threading':
-                ctx['paused'] = False
-                ctx['pause_event'].set()
-                ctx['status'] = 'running'
-                self._emit(scan_id, 'log', '[+] Scan resumed', 'info')
+            if ctx and ctx.get("mode") == "threading":
+                ctx["paused"] = False
+                ctx["pause_event"].set()
+                ctx["status"] = "running"
+                self._emit(scan_id, "log", "[+] Scan resumed", "info")
             return True
         ctx = self.active_scans.get(scan_id)
-        if ctx and ctx['status'] == 'paused':
-            ctx['paused'] = False
-            ctx['pause_event'].set()
-            ctx['status'] = 'running'
-            Scan.update_status(scan_id, 'running')
-            self._emit(scan_id, 'log', '[+] Scan resumed', 'info')
+        if ctx and ctx["status"] == "paused":
+            ctx["paused"] = False
+            ctx["pause_event"].set()
+            ctx["status"] = "running"
+            Scan.update_status(scan_id, "running")
+            self._emit(scan_id, "log", "[+] Scan resumed", "info")
             return True
         return False
 
     def stop_scan(self, scan_id):
         redis = self._get_redis()
         if redis:
-            redis.set(f'scan:{scan_id}:control', 'stopped')
-            Scan.update_status(scan_id, 'stopped')
+            redis.set(f"scan:{scan_id}:control", "stopped")
+            Scan.update_status(scan_id, "stopped")
             # Revoke Celery task if applicable
-            task_id = redis.get(f'scan:{scan_id}:task_id')
+            task_id = redis.get(f"scan:{scan_id}:task_id")
             if task_id:
                 try:
                     from app.celery_app import celery
+
                     celery.control.revoke(task_id.decode(), terminate=True)
                 except Exception as e:
                     logger.warning(f"Failed to revoke task: {e}")
             # Also stop in-memory threading context if present
             ctx = self.active_scans.get(scan_id)
-            if ctx and ctx.get('mode') == 'threading':
-                ctx['stopped'] = True
-                ctx['status'] = 'stopped'
-                ctx['pause_event'].set()
-                crawler = ctx.get('_crawler')
+            if ctx and ctx.get("mode") == "threading":
+                ctx["stopped"] = True
+                ctx["status"] = "stopped"
+                ctx["pause_event"].set()
+                crawler = ctx.get("_crawler")
                 if crawler:
                     crawler.stopped = True
-                self._emit(scan_id, 'log', '[X] Scan stopped by user', 'error')
+                self._emit(scan_id, "log", "[X] Scan stopped by user", "error")
             # Clean up Redis state
             try:
-                redis.delete(f'scan:{scan_id}:state')
+                redis.delete(f"scan:{scan_id}:state")
             except Exception:
                 pass
             if scan_id in self.active_scans:
@@ -236,14 +257,14 @@ class ScanManager:
         # Pure in-memory fallback
         ctx = self.active_scans.get(scan_id)
         if ctx:
-            ctx['stopped'] = True
-            ctx['status'] = 'stopped'
-            ctx['pause_event'].set()
-            crawler = ctx.get('_crawler')
+            ctx["stopped"] = True
+            ctx["status"] = "stopped"
+            ctx["pause_event"].set()
+            crawler = ctx.get("_crawler")
             if crawler:
                 crawler.stopped = True
-            Scan.update_status(scan_id, 'stopped')
-            self._emit(scan_id, 'log', '[X] Scan stopped by user', 'error')
+            Scan.update_status(scan_id, "stopped")
+            self._emit(scan_id, "log", "[X] Scan stopped by user", "error")
             return True
         return False
 
@@ -254,37 +275,39 @@ class ScanManager:
         redis = self._get_redis()
         if redis:
             try:
-                state = redis.hgetall(f'scan:{scan_id}:state')
+                state = redis.hgetall(f"scan:{scan_id}:state")
                 if state:
                     return {
-                        'status': state.get(b'status', b'unknown').decode(),
-                        'tested_urls': int(state.get(b'tested_urls', b'0')),
-                        'total_urls': int(state.get(b'total_urls', b'0')),
-                        'findings': int(state.get(b'findings', b'0')),
-                        'elapsed': int(time.time() - float(state.get(b'start_time', b'0')))
+                        "status": state.get(b"status", b"unknown").decode(),
+                        "tested_urls": int(state.get(b"tested_urls", b"0")),
+                        "total_urls": int(state.get(b"total_urls", b"0")),
+                        "findings": int(state.get(b"findings", b"0")),
+                        "elapsed": int(
+                            time.time() - float(state.get(b"start_time", b"0"))
+                        ),
                     }
             except Exception as e:
                 logger.debug(f"Redis get_status failed: {e}")
 
         # In-memory fallback for threading mode (when no Redis)
         ctx = self.active_scans.get(scan_id)
-        if ctx and ctx.get('mode') == 'threading':
+        if ctx and ctx.get("mode") == "threading":
             return {
-                'status': ctx['status'],
-                'tested_urls': ctx['tested_urls'],
-                'total_urls': ctx['total_urls'],
-                'findings': len(ctx['findings']),
-                'elapsed': int(time.time() - ctx['start_time'])
+                "status": ctx["status"],
+                "tested_urls": ctx["tested_urls"],
+                "total_urls": ctx["total_urls"],
+                "findings": len(ctx["findings"]),
+                "elapsed": int(time.time() - ctx["start_time"]),
             }
         # DB fallback (always works)
         scan = Scan.get_by_id(scan_id)
         if scan:
             return {
-                'status': scan['status'],
-                'tested_urls': scan['tested_urls'],
-                'total_urls': scan['total_urls'],
-                'findings': scan['vuln_count'],
-                'elapsed': scan['duration']
+                "status": scan["status"],
+                "tested_urls": scan["tested_urls"],
+                "total_urls": scan["total_urls"],
+                "findings": scan["vuln_count"],
+                "elapsed": scan["duration"],
             }
         return None
 
@@ -320,7 +343,7 @@ class ScanManager:
         redis = self._get_redis()
         if redis:
             try:
-                events = redis.lrange(f'scan:{scan_id}:event_history', 0, -1)
+                events = redis.lrange(f"scan:{scan_id}:event_history", 0, -1)
                 if events:
                     return [e.decode() for e in events]
             except Exception as e:
@@ -333,13 +356,13 @@ class ScanManager:
 
     # ─── Internal: event emission ────────────────────────────────────────
 
-    def _emit(self, scan_id, event_type, data, log_level='info'):
+    def _emit(self, scan_id, event_type, data, log_level="info"):
         """Emit event — always stores in Redis when available, plus in-memory fallback."""
         msg = {
-            'type': event_type,
-            'data': data,
-            'level': log_level,
-            'timestamp': datetime.now().strftime('%H:%M:%S')
+            "type": event_type,
+            "data": data,
+            "level": log_level,
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
         }
         serialized = f"data: {json.dumps(msg)}\n\n"
 
@@ -347,10 +370,10 @@ class ScanManager:
         if redis:
             try:
                 # Publish to live subscribers
-                redis.publish(f'scan:{scan_id}:events', json.dumps(msg))
+                redis.publish(f"scan:{scan_id}:events", json.dumps(msg))
                 # Store in Redis list for event replay (1h TTL)
-                redis.rpush(f'scan:{scan_id}:event_history', serialized)
-                redis.expire(f'scan:{scan_id}:event_history', 3600)
+                redis.rpush(f"scan:{scan_id}:event_history", serialized)
+                redis.expire(f"scan:{scan_id}:event_history", 3600)
             except Exception as e:
                 logger.warning(f"Redis event emit failed: {e}")
         else:
@@ -378,13 +401,14 @@ class ScanManager:
                     pass
 
         # Persist log events to DB (with defensive session handling)
-        if event_type == 'log':
+        if event_type == "log":
             try:
                 Scan.add_log(scan_id, data, log_level)
             except Exception as db_err:
                 # Session may be poisoned from a previous error — rollback and retry once
                 try:
                     from app.models.database import db as _db
+
                     _db.session.rollback()
                     Scan.add_log(scan_id, data, log_level)
                 except Exception:
@@ -392,10 +416,10 @@ class ScanManager:
 
     def _calculate_score(self, findings):
         if not findings:
-            return 'A'
-        critical = sum(1 for f in findings if f.get('severity') == 'critical')
-        high = sum(1 for f in findings if f.get('severity') == 'high')
-        medium = sum(1 for f in findings if f.get('severity') == 'medium')
+            return "A"
+        critical = sum(1 for f in findings if f.get("severity") == "critical")
+        high = sum(1 for f in findings if f.get("severity") == "high")
+        medium = sum(1 for f in findings if f.get("severity") == "medium")
 
         score_num = 100
         score_num -= critical * 20
@@ -403,16 +427,21 @@ class ScanManager:
         score_num -= medium * 5
         score_num = max(0, score_num)
 
-        if score_num >= 90: return 'A'
-        elif score_num >= 80: return 'B'
-        elif score_num >= 70: return 'C'
-        elif score_num >= 60: return 'D'
-        else: return 'F'
+        if score_num >= 90:
+            return "A"
+        elif score_num >= 80:
+            return "B"
+        elif score_num >= 70:
+            return "C"
+        elif score_num >= 60:
+            return "D"
+        else:
+            return "F"
 
     # ─── Threading fallback: _run_scan (unchanged from original) ─────────
 
     def _run_scan(self, ctx):
-        app = ctx.get('_app')
+        app = ctx.get("_app")
         if app:
             with app.app_context():
                 self._run_scan_inner(ctx)
@@ -420,236 +449,345 @@ class ScanManager:
             self._run_scan_inner(ctx)
 
     def _run_scan_inner(self, ctx):
-        scan_id = ctx['scan_id']
+        scan_id = ctx["scan_id"]
         seen_vulns = set()  # (vuln_type, affected_url, parameter) dedup
-        target_url = ctx['target_url']
-        speed_config = self._get_speed_config(ctx['scan_speed'])
+        target_url = ctx["target_url"]
+        speed_config = self._get_speed_config(ctx["scan_speed"])
 
         try:
-            Scan.update_status(scan_id, 'running')
+            Scan.update_status(scan_id, "running")
             track_scan_started()
-            self._emit(scan_id, 'log', f'[+] Starting scan: {target_url}', 'info')
-            self._emit(scan_id, 'log', f'[+] Mode: {ctx["scan_mode"]} | Speed: {ctx["scan_speed"]}', 'info')
+            self._emit(scan_id, "log", f"[+] Starting scan: {target_url}", "info")
+            self._emit(
+                scan_id,
+                "log",
+                f'[+] Mode: {ctx["scan_mode"]} | Speed: {ctx["scan_speed"]}',
+                "info",
+            )
 
             # Phase 0: Connectivity pre-check
-            self._emit(scan_id, 'log', '[+] Checking target connectivity...', 'info')
+            self._emit(scan_id, "log", "[+] Checking target connectivity...", "info")
             target_reachable = False
             try:
+                allow_insecure = current_app.config.get("ALLOW_INSECURE_TARGETS", Config.ALLOW_INSECURE_TARGETS)
+            except Exception:
+                allow_insecure = Config.ALLOW_INSECURE_TARGETS
+            try:
                 precheck_resp = requests_lib.get(
-                    target_url, timeout=speed_config['timeout'],
-                    verify=False, allow_redirects=True,
-                    headers={'User-Agent': 'Sudarshan-Scanner/1.0 (Security Research)'}
+                    target_url,
+                    timeout=speed_config["timeout"],
+                    verify=not allow_insecure,
+                    allow_redirects=True,
+                    headers={"User-Agent": "Sudarshan-Scanner/1.0 (Security Research)"},
                 )
                 target_reachable = True
-                self._emit(scan_id, 'log',
-                    f'[+] Target reachable: HTTP {precheck_resp.status_code} ({len(precheck_resp.text)} bytes)',
-                    'success')
+                self._emit(
+                    scan_id,
+                    "log",
+                    f"[+] Target reachable: HTTP {precheck_resp.status_code} ({len(precheck_resp.text)} bytes)",
+                    "success",
+                )
             except requests_lib.exceptions.Timeout:
-                self._emit(scan_id, 'log',
+                self._emit(
+                    scan_id,
+                    "log",
                     f'[!] Target unreachable: Connection timed out after {speed_config["timeout"]}s',
-                    'error')
+                    "error",
+                )
             except requests_lib.exceptions.ConnectionError as ce:
-                self._emit(scan_id, 'log',
-                    f'[!] Target unreachable: Connection failed — {str(ce)[:120]}',
-                    'error')
+                self._emit(
+                    scan_id,
+                    "log",
+                    f"[!] Target unreachable: Connection failed — {str(ce)[:120]}",
+                    "error",
+                )
             except Exception as pe:
-                self._emit(scan_id, 'log',
-                    f'[!] Target unreachable: {str(pe)[:120]}',
-                    'error')
+                self._emit(
+                    scan_id, "log", f"[!] Target unreachable: {str(pe)[:120]}", "error"
+                )
 
             if not target_reachable:
-                self._emit(scan_id, 'log',
-                    '[!] Cannot reach target. Scan will continue with limited checks.',
-                    'warning')
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[!] Cannot reach target. Scan will continue with limited checks.",
+                    "warning",
+                )
 
             # Phase 1: Crawling
-            self._emit(scan_id, 'log', '[+] Phase 1: Crawling target...', 'info')
+            self._emit(scan_id, "log", "[+] Phase 1: Crawling target...", "info")
 
             _crawl_counter = [0]  # mutable counter for closure
 
             def crawl_callback(url, count):
-                if ctx['stopped']:
+                if ctx["stopped"]:
                     return
-                ctx['pause_event'].wait()
-                ctx['total_urls'] = count
+                ctx["pause_event"].wait()
+                ctx["total_urls"] = count
                 _crawl_counter[0] += 1
                 # Throttle DB writes: update every 5th URL instead of every URL
                 if _crawl_counter[0] % 5 == 0 or count <= 5:
-                    Scan.update_progress(scan_id, ctx['tested_urls'], len(ctx['findings']))
+                    Scan.update_progress(
+                        scan_id, ctx["tested_urls"], len(ctx["findings"])
+                    )
                     Scan.update_total_urls(scan_id, count)
-                self._emit(scan_id, 'log', f'[+] Crawling: {url[:70]}', 'info')
-                self._emit(scan_id, 'progress', {
-                    'phase': 'crawling',
-                    'total': count,
-                    'tested': ctx['tested_urls'],
-                    'findings': len(ctx['findings'])
-                }, 'info')
+                self._emit(scan_id, "log", f"[+] Crawling: {url[:70]}", "info")
+                self._emit(
+                    scan_id,
+                    "progress",
+                    {
+                        "phase": "crawling",
+                        "total": count,
+                        "tested": ctx["tested_urls"],
+                        "findings": len(ctx["findings"]),
+                    },
+                    "info",
+                )
 
             # Auto-detect DVWA
             authenticated_session = None
             if DVWAAuth.is_dvwa_target(target_url):
-                self._emit(scan_id, 'log', '[+] DVWA detected — authenticating...', 'info')
-                authenticated_session = DVWAAuth.login(target_url.rstrip('/'))
+                self._emit(
+                    scan_id, "log", "[+] DVWA detected — authenticating...", "info"
+                )
+                authenticated_session = DVWAAuth.login(target_url.rstrip("/"))
                 if authenticated_session:
-                    dvwa_level = ctx.get('dvwa_security', 'low')
-                    DVWAAuth.set_security_level(authenticated_session, target_url.rstrip('/'), dvwa_level)
-                    self._emit(scan_id, 'log', f'[+] DVWA authenticated (security: {dvwa_level.upper()})', 'success')
+                    dvwa_level = ctx.get("dvwa_security", "low")
+                    DVWAAuth.set_security_level(
+                        authenticated_session, target_url.rstrip("/"), dvwa_level
+                    )
+                    self._emit(
+                        scan_id,
+                        "log",
+                        f"[+] DVWA authenticated (security: {dvwa_level.upper()})",
+                        "success",
+                    )
                 else:
-                    self._emit(scan_id, 'log', '[-] DVWA authentication failed — scanning without auth', 'warning')
+                    self._emit(
+                        scan_id,
+                        "log",
+                        "[-] DVWA authentication failed — scanning without auth",
+                        "warning",
+                    )
 
             crawler = None  # Initialize before conditional to avoid NameError in run_scanner closure
             if target_reachable:
                 crawler = Crawler(
                     target_url=target_url,
-                    max_depth=ctx['crawl_depth'],
-                    max_urls=speed_config['max_urls'],
-                    timeout=speed_config['timeout'],
-                    delay=speed_config['delay'],
-                    threads=speed_config.get('threads', 5),
-                    session=authenticated_session
+                    max_depth=ctx["crawl_depth"],
+                    max_urls=speed_config["max_urls"],
+                    timeout=speed_config["timeout"],
+                    delay=speed_config["delay"],
+                    threads=speed_config.get("threads", 5),
+                    session=authenticated_session,
                 )
-                ctx['_crawler'] = crawler
+                ctx["_crawler"] = crawler
 
-                discovered_urls, injectable_points = crawler.crawl(scan_id=scan_id, callback=crawl_callback)
+                discovered_urls, injectable_points = crawler.crawl(
+                    scan_id=scan_id, callback=crawl_callback
+                )
             else:
                 # Target unreachable — skip crawling to avoid wasting time on timeouts
                 discovered_urls = []
                 injectable_points = []
 
-            ctx['total_urls'] = len(discovered_urls)
+            ctx["total_urls"] = len(discovered_urls)
 
-            if ctx['stopped']:
+            if ctx["stopped"]:
                 self._finalize(ctx, discovered_urls)
                 return
 
-            self._emit(scan_id, 'log',
-                f'[+] Crawl complete: {len(discovered_urls)} URLs, {len(injectable_points)} injectable points',
-                'success')
+            self._emit(
+                scan_id,
+                "log",
+                f"[+] Crawl complete: {len(discovered_urls)} URLs, {len(injectable_points)} injectable points",
+                "success",
+            )
 
             # When crawler finds 0 URLs, create a fallback injectable point
             # from the target URL so scanners still have something to test
             if len(injectable_points) == 0 and target_reachable:
-                self._emit(scan_id, 'log',
-                    '[*] Creating fallback test points from target URL...',
-                    'info')
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[*] Creating fallback test points from target URL...",
+                    "info",
+                )
                 # Add the target URL itself as an injectable point
                 parsed = urlparse(target_url)
                 # Add any query parameters from the target URL
                 if parsed.query:
                     params = parse_qs(parsed.query, keep_blank_values=True)
                     for param_name, param_values in params.items():
-                        injectable_points.append({
-                            'name': param_name,
-                            'value': param_values[0] if param_values else '',
-                            'url': target_url
-                        })
+                        injectable_points.append(
+                            {
+                                "name": param_name,
+                                "value": param_values[0] if param_values else "",
+                                "url": target_url,
+                            }
+                        )
                 # Always add the target URL as a base injectable point
-                injectable_points.append({
-                    'type': 'url',
-                    'url': target_url,
-                    'name': '',
-                    'value': ''
-                })
+                injectable_points.append(
+                    {"type": "url", "url": target_url, "name": "", "value": ""}
+                )
                 # Add common injectable endpoints
                 common_paths = [
-                    '/search?q=test', '/login', '/?id=1', '/?page=1',
-                    '/index.php?id=1', '/product?id=1'
+                    "/search?q=test",
+                    "/login",
+                    "/?id=1",
+                    "/?page=1",
+                    "/index.php?id=1",
+                    "/product?id=1",
                 ]
-                base = target_url.rstrip('/')
+                base = target_url.rstrip("/")
                 for path in common_paths:
                     full_url = base + path
                     p = urlparse(full_url)
                     if p.query:
                         qp = parse_qs(p.query, keep_blank_values=True)
                         for pn, pv in qp.items():
-                            injectable_points.append({
-                                'name': pn,
-                                'value': pv[0] if pv else '',
-                                'url': full_url
-                            })
-                discovered_urls.append({'url': target_url, 'status_code': 200, 'depth': 0})
-                ctx['total_urls'] = len(discovered_urls)
-                self._emit(scan_id, 'log',
-                    f'[+] Created {len(injectable_points)} fallback test points',
-                    'info')
+                            injectable_points.append(
+                                {
+                                    "name": pn,
+                                    "value": pv[0] if pv else "",
+                                    "url": full_url,
+                                }
+                            )
+                discovered_urls.append(
+                    {"url": target_url, "status_code": 200, "depth": 0}
+                )
+                ctx["total_urls"] = len(discovered_urls)
+                self._emit(
+                    scan_id,
+                    "log",
+                    f"[+] Created {len(injectable_points)} fallback test points",
+                    "info",
+                )
             elif len(discovered_urls) == 0 and not target_reachable:
-                self._emit(scan_id, 'log',
-                    '[!] Warning: Target is unreachable. No URLs to scan.',
-                    'warning')
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[!] Warning: Target is unreachable. No URLs to scan.",
+                    "warning",
+                )
 
             # Phase 1.5: AI Reconnaissance (non-blocking)
             target_context = {}
             try:
                 from app.ai.smart_engine import get_smart_engine
+
                 smart_engine = get_smart_engine()
-                self._emit(scan_id, 'log', '[*] AI Reconnaissance: Analyzing target technology stack...', 'info')
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[*] AI Reconnaissance: Analyzing target technology stack...",
+                    "info",
+                )
                 import requests as _req
-                recon_resp = _req.get(target_url, timeout=10, verify=False)
+
+                recon_resp = _req.get(target_url, timeout=10, verify=not allow_insecure)
                 recon_result = smart_engine.reconnaissance(target_url, recon_resp)
                 if recon_result:
                     target_context = recon_result
-                    ctx['target_context'] = recon_result
+                    ctx["target_context"] = recon_result
                     tech_info = []
-                    if recon_result.get('language'):
+                    if recon_result.get("language"):
                         tech_info.append(f"Language: {recon_result['language']}")
-                    if recon_result.get('framework'):
+                    if recon_result.get("framework"):
                         tech_info.append(f"Framework: {recon_result['framework']}")
-                    if recon_result.get('server'):
+                    if recon_result.get("server"):
                         tech_info.append(f"Server: {recon_result['server']}")
-                    if recon_result.get('waf_detected'):
-                        waf_name = recon_result.get('waf_name', 'Unknown')
+                    if recon_result.get("waf_detected"):
+                        waf_name = recon_result.get("waf_name", "Unknown")
                         tech_info.append(f"WAF: {waf_name}")
                     if tech_info:
-                        self._emit(scan_id, 'log', f'[+] AI Recon: {" | ".join(tech_info)}', 'success')
-                    if recon_result.get('scan_recommendations'):
-                        for rec in recon_result['scan_recommendations'][:3]:
-                            self._emit(scan_id, 'log', f'[*] AI Recommendation: {rec[:100]}', 'info')
+                        self._emit(
+                            scan_id,
+                            "log",
+                            f'[+] AI Recon: {" | ".join(tech_info)}',
+                            "success",
+                        )
+                    if recon_result.get("scan_recommendations"):
+                        for rec in recon_result["scan_recommendations"][:3]:
+                            self._emit(
+                                scan_id,
+                                "log",
+                                f"[*] AI Recommendation: {rec[:100]}",
+                                "info",
+                            )
                 else:
-                    self._emit(scan_id, 'log', '[*] AI Recon: Could not determine technology stack', 'info')
+                    self._emit(
+                        scan_id,
+                        "log",
+                        "[*] AI Recon: Could not determine technology stack",
+                        "info",
+                    )
             except Exception as recon_err:
-                logger.debug(f'AI reconnaissance skipped: {recon_err}')
-                self._emit(scan_id, 'log', '[*] AI Recon: Skipped (LLM unavailable)', 'info')
+                logger.debug(f"AI reconnaissance skipped: {recon_err}")
+                self._emit(
+                    scan_id, "log", "[*] AI Recon: Skipped (LLM unavailable)", "info"
+                )
 
             # Phase 1.6: SPA Detection — adjust scan strategy for SPAs
             is_spa = False
             if target_context:
-                tech_list = [t.lower() for t in target_context.get('technologies', [])]
-                framework = (target_context.get('framework') or '').lower()
-                spa_indicators = ('react', 'vue', 'angular', 'next', 'nuxt', 'svelte', 'gatsby')
+                tech_list = [t.lower() for t in target_context.get("technologies", [])]
+                framework = (target_context.get("framework") or "").lower()
+                spa_indicators = (
+                    "react",
+                    "vue",
+                    "angular",
+                    "next",
+                    "nuxt",
+                    "svelte",
+                    "gatsby",
+                )
                 if any(spa in framework for spa in spa_indicators):
                     is_spa = True
-                if any(spa in ' '.join(tech_list) for spa in spa_indicators):
+                if any(spa in " ".join(tech_list) for spa in spa_indicators):
                     is_spa = True
-            ctx['is_spa'] = is_spa
+            ctx["is_spa"] = is_spa
             if is_spa:
-                self._emit(scan_id, 'log',
-                    '[*] SPA detected — adjusting scan strategy '
-                    '(skip directory brute-force, focus on API endpoints)', 'info')
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[*] SPA detected — adjusting scan strategy "
+                    "(skip directory brute-force, focus on API endpoints)",
+                    "info",
+                )
 
             # Phase 2: Vulnerability Scanning
-            if ctx['scan_mode'] == 'active':
-                self._emit(scan_id, 'log', '[+] Phase 2: Active vulnerability scanning...', 'info')
+            if ctx["scan_mode"] == "active":
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[+] Phase 2: Active vulnerability scanning...",
+                    "info",
+                )
 
                 scanner_map = {
-                    'sql_injection': (SQLInjectionScanner, 'SQL Injection'),
-                    'xss': (XSSScanner, 'Cross-Site Scripting'),
-                    'csrf': (CSRFScanner, 'CSRF'),
-                    'security_headers': (SecurityHeadersScanner, 'Security Headers'),
-                    'directory_traversal': (DirectoryTraversalScanner, 'Directory Traversal'),
-                    'command_injection': (CommandInjectionScanner, 'Command Injection'),
-                    'idor': (IDORScanner, 'IDOR'),
-                    'directory_listing': (DirectoryListingScanner, 'Directory Listing'),
-                    'xxe': (XXEScanner, 'XXE Injection'),
-                    'ssrf': (SSRFScanner, 'SSRF'),
-                    'open_redirect': (OpenRedirectScanner, 'Open Redirect'),
-                    'cors': (CORSScanner, 'CORS Misconfiguration'),
-                    'clickjacking': (ClickjackingScanner, 'Clickjacking'),
-                    'ssti': (SSTIScanner, 'Server-Side Template Injection'),
-                    'jwt_attacks': (JWTAttackScanner, 'JWT Vulnerabilities'),
-                    'broken_auth': (BrokenAuthScanner, 'Broken Authentication'),
+                    "sql_injection": (SQLInjectionScanner, "SQL Injection"),
+                    "xss": (XSSScanner, "Cross-Site Scripting"),
+                    "csrf": (CSRFScanner, "CSRF"),
+                    "security_headers": (SecurityHeadersScanner, "Security Headers"),
+                    "directory_traversal": (
+                        DirectoryTraversalScanner,
+                        "Directory Traversal",
+                    ),
+                    "command_injection": (CommandInjectionScanner, "Command Injection"),
+                    "idor": (IDORScanner, "IDOR"),
+                    "directory_listing": (DirectoryListingScanner, "Directory Listing"),
+                    "xxe": (XXEScanner, "XXE Injection"),
+                    "ssrf": (SSRFScanner, "SSRF"),
+                    "open_redirect": (OpenRedirectScanner, "Open Redirect"),
+                    "cors": (CORSScanner, "CORS Misconfiguration"),
+                    "clickjacking": (ClickjackingScanner, "Clickjacking"),
+                    "ssti": (SSTIScanner, "Server-Side Template Injection"),
+                    "jwt_attacks": (JWTAttackScanner, "JWT Vulnerabilities"),
+                    "broken_auth": (BrokenAuthScanner, "Broken Authentication"),
                 }
 
-                selected = ctx['selected_checks']
+                selected = ctx["selected_checks"]
                 parallel_scanners = [
                     (name, cls, display)
                     for name, (cls, display) in scanner_map.items()
@@ -657,7 +795,7 @@ class ScanManager:
                 ]
 
                 def run_scanner(check_name, ScannerClass, display_name):
-                    if ctx['stopped']:
+                    if ctx["stopped"]:
                         return display_name, [], None
                     try:
                         # Create a fresh session and copy cookies/headers
@@ -670,15 +808,15 @@ class ScanManager:
                             scanner_session = None
                         scanner = ScannerClass(
                             session=scanner_session,
-                            timeout=speed_config['timeout'],
-                            delay=speed_config['delay']
+                            timeout=speed_config["timeout"],
+                            delay=speed_config["delay"],
                         )
                         # Enable ML data collection
                         scanner.collect_ml_data = True
                         scanner.current_scan_id = scan_id
                         # Propagate SPA detection flag to scanner
-                        scanner.is_spa_target = ctx.get('is_spa', False)
-                        if check_name in ('security_headers', 'cors', 'clickjacking'):
+                        scanner.is_spa_target = ctx.get("is_spa", False)
+                        if check_name in ("security_headers", "cors", "clickjacking"):
                             findings = scanner.scan(target_url, [])
                         else:
                             findings = scanner.scan(target_url, injectable_points)
@@ -686,70 +824,113 @@ class ScanManager:
                     except Exception as e:
                         return display_name, [], str(e)
 
-                max_workers = min(len(parallel_scanners), speed_config.get('threads', 5))
+                max_workers = min(
+                    len(parallel_scanners), speed_config.get("threads", 5)
+                )
 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures_map = {}
                     for check_name, ScannerClass, display_name in parallel_scanners:
-                        self._emit(scan_id, 'log', f'[!] Testing {display_name}...', 'warning')
-                        future = executor.submit(run_scanner, check_name, ScannerClass, display_name)
+                        self._emit(
+                            scan_id, "log", f"[!] Testing {display_name}...", "warning"
+                        )
+                        future = executor.submit(
+                            run_scanner, check_name, ScannerClass, display_name
+                        )
                         futures_map[future] = display_name
 
                     for future in as_completed(futures_map):
-                        if ctx['stopped']:
+                        if ctx["stopped"]:
                             break
                         display_name, findings, error = future.result()
 
                         if error:
-                            self._emit(scan_id, 'log', f'[-] Error in {display_name}: {error[:80]}', 'warning')
+                            self._emit(
+                                scan_id,
+                                "log",
+                                f"[-] Error in {display_name}: {error[:80]}",
+                                "warning",
+                            )
                             continue
 
                         # Collect deduplicated findings for batch insert
                         batch_findings = []
                         for finding in findings:
-                            dedup_key = (finding['vuln_type'], finding['affected_url'], finding['parameter'])
+                            dedup_key = (
+                                finding["vuln_type"],
+                                finding["affected_url"],
+                                finding["parameter"],
+                            )
                             if dedup_key in seen_vulns:
                                 continue
                             seen_vulns.add(dedup_key)
-                            ctx['findings'].append(finding)
+                            ctx["findings"].append(finding)
                             batch_findings.append(finding)
 
-                            track_vulnerability(finding['severity'], finding.get('vuln_type', 'unknown'))
-                            sev = finding['severity'].upper()
-                            self._emit(scan_id, 'log',
+                            track_vulnerability(
+                                finding["severity"], finding.get("vuln_type", "unknown")
+                            )
+                            sev = finding["severity"].upper()
+                            self._emit(
+                                scan_id,
+                                "log",
                                 f'[X] FOUND: {finding["name"]} ({sev}) at {finding["affected_url"][:50]}',
-                                'error')
-                            self._emit(scan_id, 'finding', {
-                                'name': finding['name'],
-                                'severity': finding['severity'],
-                                'url': finding['affected_url']
-                            }, 'error')
+                                "error",
+                            )
+                            self._emit(
+                                scan_id,
+                                "finding",
+                                {
+                                    "name": finding["name"],
+                                    "severity": finding["severity"],
+                                    "url": finding["affected_url"],
+                                },
+                                "error",
+                            )
 
                         # Batch-insert all findings from this scanner (1 commit instead of N)
                         if batch_findings:
                             Vulnerability.create_batch(scan_id, batch_findings)
 
                         if not findings:
-                            self._emit(scan_id, 'log', f'[+] {display_name}: No issues found', 'success')
+                            self._emit(
+                                scan_id,
+                                "log",
+                                f"[+] {display_name}: No issues found",
+                                "success",
+                            )
 
-                        ctx['tested_urls'] = min(
-                            ctx['tested_urls'] + max(1, len(discovered_urls) // max(1, len(scanner_map))),
-                            ctx['total_urls']
+                        ctx["tested_urls"] = min(
+                            ctx["tested_urls"]
+                            + max(1, len(discovered_urls) // max(1, len(scanner_map))),
+                            ctx["total_urls"],
                         )
-                        Scan.update_progress(scan_id, ctx['tested_urls'], len(ctx['findings']))
-                        self._emit(scan_id, 'progress', {
-                            'phase': 'scanning',
-                            'total': ctx['total_urls'],
-                            'tested': ctx['tested_urls'],
-                            'findings': len(ctx['findings'])
-                        }, 'info')
+                        Scan.update_progress(
+                            scan_id, ctx["tested_urls"], len(ctx["findings"])
+                        )
+                        self._emit(
+                            scan_id,
+                            "progress",
+                            {
+                                "phase": "scanning",
+                                "total": ctx["total_urls"],
+                                "tested": ctx["tested_urls"],
+                                "findings": len(ctx["findings"]),
+                            },
+                            "info",
+                        )
 
             else:
-                self._emit(scan_id, 'log', '[+] Passive mode: Checking security headers...', 'info')
-                scanner = SecurityHeadersScanner(timeout=speed_config['timeout'])
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[+] Passive mode: Checking security headers...",
+                    "info",
+                )
+                scanner = SecurityHeadersScanner(timeout=speed_config["timeout"])
                 findings = scanner.scan(target_url, [])
                 for finding in findings:
-                    ctx['findings'].append(finding)
+                    ctx["findings"].append(finding)
                 # Batch-insert all passive findings in one commit
                 if findings:
                     Vulnerability.create_batch(scan_id, findings)
@@ -760,35 +941,37 @@ class ScanManager:
             # Rollback any poisoned session before attempting DB writes
             try:
                 from app.models.database import db as _db
+
                 _db.session.rollback()
             except Exception:
                 pass
-            self._emit(scan_id, 'log', f'[-] Fatal error: {str(e)}', 'error')
+            self._emit(scan_id, "log", f"[-] Fatal error: {str(e)}", "error")
             try:
-                Scan.update_status(scan_id, 'error')
+                Scan.update_status(scan_id, "error")
             except Exception:
                 # If session is still unusable, rollback and retry once
                 try:
                     from app.models.database import db as _db2
+
                     _db2.session.rollback()
-                    Scan.update_status(scan_id, 'error')
+                    Scan.update_status(scan_id, "error")
                 except Exception:
-                    logger.error(f'Failed to mark scan {scan_id} as error')
-            ctx['status'] = 'error'
+                    logger.error(f"Failed to mark scan {scan_id} as error")
+            ctx["status"] = "error"
             if scan_id in self.active_scans:
                 del self.active_scans[scan_id]
 
     def _finalize(self, ctx, discovered_urls):
-        scan_id = ctx['scan_id']
-        findings = ctx['findings']
+        scan_id = ctx["scan_id"]
+        findings = ctx["findings"]
 
         score = self._calculate_score(findings)
-        duration = int(time.time() - ctx['start_time'])
+        duration = int(time.time() - ctx["start_time"])
 
-        critical = sum(1 for f in findings if f.get('severity') == 'critical')
-        high = sum(1 for f in findings if f.get('severity') == 'high')
-        medium = sum(1 for f in findings if f.get('severity') == 'medium')
-        low = sum(1 for f in findings if f.get('severity') in ('low', 'info'))
+        critical = sum(1 for f in findings if f.get("severity") == "critical")
+        high = sum(1 for f in findings if f.get("severity") == "high")
+        medium = sum(1 for f in findings if f.get("severity") == "medium")
+        low = sum(1 for f in findings if f.get("severity") in ("low", "info"))
 
         try:
             Scan.complete(
@@ -799,38 +982,53 @@ class ScanManager:
                 critical=critical,
                 high=high,
                 medium=medium,
-                low=low
+                low=low,
             )
         except Exception as e:
-            logger.error(f'_finalize: Scan.complete failed: {e}')
+            logger.error(f"_finalize: Scan.complete failed: {e}")
 
-        status = 'completed' if not ctx.get('stopped') else 'stopped'
-        ctx['status'] = status
+        status = "completed" if not ctx.get("stopped") else "stopped"
+        ctx["status"] = status
         track_scan_completed(duration, status)
 
-        self._emit(scan_id, 'log', f'[+] Scan complete! Score: {score} | Vulnerabilities: {len(findings)}', 'success')
-        self._emit(scan_id, 'complete', {
-            'score': score,
-            'duration': duration,
-            'total_vulns': len(findings),
-            'critical': critical,
-            'high': high,
-            'medium': medium,
-            'low': low,
-            'scan_id': scan_id
-        }, 'success')
+        self._emit(
+            scan_id,
+            "log",
+            f"[+] Scan complete! Score: {score} | Vulnerabilities: {len(findings)}",
+            "success",
+        )
+        self._emit(
+            scan_id,
+            "complete",
+            {
+                "score": score,
+                "duration": duration,
+                "total_vulns": len(findings),
+                "critical": critical,
+                "high": high,
+                "medium": medium,
+                "low": low,
+                "scan_id": scan_id,
+            },
+            "success",
+        )
 
         # Trigger webhooks (best-effort)
         try:
             from app.models.webhook import Webhook
-            Webhook.trigger(ctx.get('user_id'), 'scan_complete', {
-                'scan_id': scan_id,
-                'score': score,
-                'duration': duration,
-                'total_vulns': len(findings),
-                'critical': critical,
-                'high': high,
-            })
+
+            Webhook.trigger(
+                ctx.get("user_id"),
+                "scan_complete",
+                {
+                    "scan_id": scan_id,
+                    "score": score,
+                    "duration": duration,
+                    "total_vulns": len(findings),
+                    "critical": critical,
+                    "high": high,
+                },
+            )
         except Exception:
             pass  # Webhooks are non-critical
 
@@ -838,11 +1036,10 @@ class ScanManager:
         redis = self._get_redis()
         if redis:
             try:
-                redis.delete(f'scan:{scan_id}:state')
-                redis.delete(f'scan:{scan_id}:control')
+                redis.delete(f"scan:{scan_id}:state")
+                redis.delete(f"scan:{scan_id}:control")
             except Exception:
                 pass
 
         if scan_id in self.active_scans:
             del self.active_scans[scan_id]
-

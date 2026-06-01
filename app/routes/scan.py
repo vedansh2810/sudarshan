@@ -1,11 +1,20 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, Response
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    jsonify,
+    Response,
+)
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
 from app.scanner.scan_manager import ScanManager
 from app.config import Config
 from app.utils.auth_utils import login_required
 from app.utils.auth_helpers import user_can_access_scan
-from app import limiter, csrf
+from app import limiter
 import json
 import time
 import queue
@@ -13,66 +22,74 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-scan_bp = Blueprint('scan', __name__)
+scan_bp = Blueprint("scan", __name__)
 
 
-@scan_bp.route('/scan/new', methods=['GET', 'POST'])
+@scan_bp.route("/scan/new", methods=["GET", "POST"])
 @limiter.limit("10 per hour")
 @login_required
 def new_scan():
-    if request.method == 'POST':
-        target_url = request.form.get('target_url', '').strip()
-        scan_mode = request.form.get('scan_mode', 'active')
-        scan_speed = request.form.get('scan_speed', 'balanced')
+    if request.method == "POST":
+        target_url = request.form.get("target_url", "").strip()
+        scan_mode = request.form.get("scan_mode", "active")
+        scan_speed = request.form.get("scan_speed", "balanced")
         try:
-            crawl_depth = max(1, min(10, int(request.form.get('crawl_depth', 3))))
+            crawl_depth = max(1, min(10, int(request.form.get("crawl_depth", 3))))
         except (ValueError, TypeError):
             crawl_depth = 3
-        dvwa_security = request.form.get('dvwa_security', 'low')
-        authorized = request.form.get('authorized')
-        selected_checks = request.form.getlist('checks')
+        dvwa_security = request.form.get("dvwa_security", "low")
+        authorized = request.form.get("authorized")
+        selected_checks = request.form.getlist("checks")
 
         if not authorized:
-            return render_template('scan/new.html',
-                error='You must confirm legal authorization before scanning.',
-                checks=Config.VULNERABILITY_CHECKS)
+            return render_template(
+                "scan/new.html",
+                error="You must confirm legal authorization before scanning.",
+                checks=Config.VULNERABILITY_CHECKS,
+            )
 
         if not target_url:
-            return render_template('scan/new.html',
-                error='Please enter a target URL.',
-                checks=Config.VULNERABILITY_CHECKS)
+            return render_template(
+                "scan/new.html",
+                error="Please enter a target URL.",
+                checks=Config.VULNERABILITY_CHECKS,
+            )
 
-        if not target_url.startswith(('http://', 'https://')):
-            target_url = 'http://' + target_url
+        if not target_url.startswith(("http://", "https://")):
+            target_url = "http://" + target_url
 
         # SSRF protection: block scans targeting internal/private IPs
         from app.utils.url_safety import is_safe_url
+
         is_safe, reason = is_safe_url(target_url)
         if not is_safe:
-            return render_template('scan/new.html',
-                error=f'Target URL blocked for security: {reason}',
-                checks=Config.VULNERABILITY_CHECKS)
+            return render_template(
+                "scan/new.html",
+                error=f"Target URL blocked for security: {reason}",
+                checks=Config.VULNERABILITY_CHECKS,
+            )
 
         if not selected_checks:
             selected_checks = Config.VULNERABILITY_CHECKS
 
         # Org context and quota check
-        org_id = session.get('org_id')
+        org_id = session.get("org_id")
         if org_id:
             from app.models.organization import Organization
+
             allowed, reason = Organization.check_scan_quota(org_id)
             if not allowed:
-                return render_template('scan/new.html',
-                    error=reason,
-                    checks=Config.VULNERABILITY_CHECKS)
+                return render_template(
+                    "scan/new.html", error=reason, checks=Config.VULNERABILITY_CHECKS
+                )
 
         scan_id = Scan.create(
-            user_id=session['user_id'],
+            user_id=session["user_id"],
             target_url=target_url,
             scan_mode=scan_mode,
             scan_speed=scan_speed,
             crawl_depth=crawl_depth,
-            org_id=org_id
+            org_id=org_id,
         )
 
         manager = ScanManager.get_instance()
@@ -83,49 +100,54 @@ def new_scan():
             scan_speed=scan_speed,
             crawl_depth=crawl_depth,
             selected_checks=selected_checks,
-            dvwa_security=dvwa_security
+            dvwa_security=dvwa_security,
         )
 
-        return redirect(url_for('scan.progress', scan_id=scan_id))
+        return redirect(url_for("scan.progress", scan_id=scan_id))
 
-    return render_template('scan/new.html', checks=Config.VULNERABILITY_CHECKS)
+    return render_template("scan/new.html", checks=Config.VULNERABILITY_CHECKS)
 
-@scan_bp.route('/scan/<int:scan_id>/progress')
+
+@scan_bp.route("/scan/<int:scan_id>/progress")
 @login_required
 def progress(scan_id):
     scan = Scan.get_by_id(scan_id)
-    if not user_can_access_scan(scan, session.get('user_id')):
-        return redirect(url_for('dashboard.index'))
-    return render_template('scan/progress.html', scan=scan)
+    if not user_can_access_scan(scan, session.get("user_id")):
+        return redirect(url_for("dashboard.index"))
+    return render_template("scan/progress.html", scan=scan)
 
-@scan_bp.route('/scan/<int:scan_id>/status')
+
+@scan_bp.route("/scan/<int:scan_id>/status")
 @limiter.exempt
 @login_required
 def status(scan_id):
     """Lightweight JSON endpoint for polling scan stats."""
     scan = Scan.get_by_id(scan_id)
-    if not user_can_access_scan(scan, session.get('user_id')):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not user_can_access_scan(scan, session.get("user_id")):
+        return jsonify({"error": "Forbidden"}), 403
     manager = ScanManager.get_instance()
     st = manager.get_status(scan_id)
     if st:
         return jsonify(st)
-    return jsonify({
-        'status': scan['status'],
-        'total_urls': scan['total_urls'] or 0,
-        'tested_urls': scan['tested_urls'] or 0,
-        'findings': scan['vuln_count'] or 0,
-        'elapsed': scan['duration'] or 0
-    })
+    return jsonify(
+        {
+            "status": scan["status"],
+            "total_urls": scan["total_urls"] or 0,
+            "tested_urls": scan["tested_urls"] or 0,
+            "findings": scan["vuln_count"] or 0,
+            "elapsed": scan["duration"] or 0,
+        }
+    )
 
-@scan_bp.route('/scan/<int:scan_id>/stream')
+
+@scan_bp.route("/scan/<int:scan_id>/stream")
 @limiter.exempt
 @login_required
 def stream(scan_id):
     # Ownership check: prevent users from subscribing to other users' scans
     scan = Scan.get_by_id(scan_id)
-    if not user_can_access_scan(scan, session.get('user_id')):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not user_can_access_scan(scan, session.get("user_id")):
+        return jsonify({"error": "Forbidden"}), 403
 
     manager = ScanManager.get_instance()
 
@@ -149,10 +171,10 @@ def _stream_redis(scan_id, manager):
         logs = Scan.get_logs(scan_id)
         for log in logs:
             msg = {
-                'type': 'log',
-                'data': log['message'],
-                'level': log['log_type'],
-                'timestamp': str(log['logged_at'])
+                "type": "log",
+                "data": log["message"],
+                "level": log["log_type"],
+                "timestamp": str(log["logged_at"]),
             }
             replay_messages.append(f"data: {json.dumps(msg)}\n\n")
     except Exception as e:
@@ -162,14 +184,14 @@ def _stream_redis(scan_id, manager):
         existing_vulns = Vulnerability.get_by_scan(scan_id)
         for vuln in existing_vulns:
             finding_msg = {
-                'type': 'finding',
-                'data': {
-                    'name': vuln['name'],
-                    'severity': vuln['severity'],
-                    'url': vuln['affected_url']
+                "type": "finding",
+                "data": {
+                    "name": vuln["name"],
+                    "severity": vuln["severity"],
+                    "url": vuln["affected_url"],
                 },
-                'level': 'error',
-                'timestamp': str(vuln['found_at'])
+                "level": "error",
+                "timestamp": str(vuln["found_at"]),
             }
             replay_messages.append(f"data: {json.dumps(finding_msg)}\n\n")
     except Exception as e:
@@ -178,7 +200,7 @@ def _stream_redis(scan_id, manager):
     try:
         status = manager.get_status(scan_id)
         if status:
-            if status['status'] in ('completed', 'stopped', 'error'):
+            if status["status"] in ("completed", "stopped", "error"):
                 scan = Scan.get_by_id(scan_id)
                 complete_msg = f"data: {json.dumps({'type': 'complete', 'data': {'score': scan['score'] if scan else 'N/A', 'scan_id': scan_id}, 'level': 'success'})}\n\n"
                 initial_complete = True
@@ -204,23 +226,23 @@ def _stream_redis(scan_id, manager):
 
             # Subscribe to Redis channel for live events
             pubsub = redis_client.pubsub()
-            pubsub.subscribe(f'scan:{scan_id}:events')
+            pubsub.subscribe(f"scan:{scan_id}:events")
 
             while True:
                 message = pubsub.get_message(ignore_subscribe_messages=True, timeout=30)
-                if message and message['type'] == 'message':
-                    data = message['data']
+                if message and message["type"] == "message":
+                    data = message["data"]
                     if isinstance(data, bytes):
-                        data = data.decode('utf-8')
+                        data = data.decode("utf-8")
                     yield f"data: {data}\n\n"
                     try:
                         parsed = json.loads(data)
-                        if parsed.get('type') == 'complete':
+                        if parsed.get("type") == "complete":
                             break
                     except json.JSONDecodeError:
                         pass
                 else:
-                    yield ': heartbeat\n\n'
+                    yield ": heartbeat\n\n"
         except GeneratorExit:
             pass
         except Exception as e:
@@ -233,8 +255,11 @@ def _stream_redis(scan_id, manager):
                 except Exception:
                     pass
 
-    return Response(generate(), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _stream_threading(scan_id, manager):
@@ -257,10 +282,10 @@ def _stream_threading(scan_id, manager):
             logs = Scan.get_logs(scan_id)
             for log in logs:
                 msg = {
-                    'type': 'log',
-                    'data': log['message'],
-                    'level': log['log_type'],
-                    'timestamp': str(log['logged_at'])
+                    "type": "log",
+                    "data": log["message"],
+                    "level": log["log_type"],
+                    "timestamp": str(log["logged_at"]),
                 }
                 replay_messages.append(f"data: {json.dumps(msg)}\n\n")
         except Exception as e:
@@ -270,14 +295,14 @@ def _stream_threading(scan_id, manager):
         existing_vulns = Vulnerability.get_by_scan(scan_id)
         for vuln in existing_vulns:
             finding_msg = {
-                'type': 'finding',
-                'data': {
-                    'name': vuln['name'],
-                    'severity': vuln['severity'],
-                    'url': vuln['affected_url']
+                "type": "finding",
+                "data": {
+                    "name": vuln["name"],
+                    "severity": vuln["severity"],
+                    "url": vuln["affected_url"],
                 },
-                'level': 'error',
-                'timestamp': str(vuln['found_at'])
+                "level": "error",
+                "timestamp": str(vuln["found_at"]),
             }
             replay_messages.append(f"data: {json.dumps(finding_msg)}\n\n")
     except Exception as e:
@@ -286,7 +311,7 @@ def _stream_threading(scan_id, manager):
     try:
         status = manager.get_status(scan_id)
         if status:
-            if status['status'] in ('completed', 'stopped', 'error'):
+            if status["status"] in ("completed", "stopped", "error"):
                 scan = Scan.get_by_id(scan_id)
                 complete_msg = f"data: {json.dumps({'type': 'complete', 'data': {'score': scan['score'] if scan else 'N/A', 'scan_id': scan_id}, 'level': 'success'})}\n\n"
                 initial_complete = True
@@ -314,14 +339,14 @@ def _stream_threading(scan_id, manager):
                 try:
                     data = q.get(timeout=30)
                     yield data
-                    parsed = json.loads(data.replace('data: ', '').strip())
-                    if parsed.get('type') == 'complete':
+                    parsed = json.loads(data.replace("data: ", "").strip())
+                    if parsed.get("type") == "complete":
                         break
                 except queue.Empty:
-                    yield ': heartbeat\n\n'
+                    yield ": heartbeat\n\n"
                 except Exception as e:
                     logger.debug(f"SSE stream error: {e}")
-                    yield ': heartbeat\n\n'
+                    yield ": heartbeat\n\n"
         except GeneratorExit:
             pass
         except Exception as e:
@@ -329,39 +354,41 @@ def _stream_threading(scan_id, manager):
         finally:
             manager.unregister_sse_client(scan_id, q)
 
-    return Response(generate(), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
-@scan_bp.route('/scan/<int:scan_id>/pause', methods=['POST'])
-@csrf.exempt
+@scan_bp.route("/scan/<int:scan_id>/pause", methods=["POST"])
 @login_required
 def pause(scan_id):
     scan = Scan.get_by_id(scan_id)
-    if not user_can_access_scan(scan, session.get('user_id')):
-        return jsonify({'success': False})
+    if not user_can_access_scan(scan, session.get("user_id")):
+        return jsonify({"success": False})
     manager = ScanManager.get_instance()
     success = manager.pause_scan(scan_id)
-    return jsonify({'success': success})
+    return jsonify({"success": success})
 
-@scan_bp.route('/scan/<int:scan_id>/resume', methods=['POST'])
-@csrf.exempt
+
+@scan_bp.route("/scan/<int:scan_id>/resume", methods=["POST"])
 @login_required
 def resume(scan_id):
     scan = Scan.get_by_id(scan_id)
-    if not user_can_access_scan(scan, session.get('user_id')):
-        return jsonify({'success': False})
+    if not user_can_access_scan(scan, session.get("user_id")):
+        return jsonify({"success": False})
     manager = ScanManager.get_instance()
     success = manager.resume_scan(scan_id)
-    return jsonify({'success': success})
+    return jsonify({"success": success})
 
-@scan_bp.route('/scan/<int:scan_id>/stop', methods=['POST'])
-@csrf.exempt
+
+@scan_bp.route("/scan/<int:scan_id>/stop", methods=["POST"])
 @login_required
 def stop(scan_id):
     scan = Scan.get_by_id(scan_id)
-    if not user_can_access_scan(scan, session.get('user_id')):
-        return jsonify({'success': False})
+    if not user_can_access_scan(scan, session.get("user_id")):
+        return jsonify({"success": False})
     manager = ScanManager.get_instance()
     success = manager.stop_scan(scan_id)
-    return jsonify({'success': success})
+    return jsonify({"success": success})

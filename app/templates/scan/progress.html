@@ -211,7 +211,11 @@
     }
 
     try {
-      const res = await fetch('/scan/' + scanId + '/' + action, { method: 'POST' });
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const res = await fetch('/scan/' + scanId + '/' + action, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+      });
       const data = await res.json();
       if (!data.success) {
         const stRes = await fetch('/scan/' + scanId + '/status');

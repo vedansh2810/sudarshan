@@ -5,6 +5,7 @@ Uses HMAC-SHA256 with the app's SECRET_KEY for key hashing.
 Upgrade from raw SHA-256: HMAC binds the hash to the app's secret,
 preventing offline rainbow-table attacks even if the DB is leaked.
 """
+
 import hashlib
 import hmac
 import secrets
@@ -15,11 +16,16 @@ from app.models.database import db
 
 class APIKey(db.Model):
     """API Key for programmatic access."""
-    __tablename__ = 'api_keys'
+
+    __tablename__ = "api_keys"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
+    )
+    org_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True
+    )
     name = db.Column(db.String(100), nullable=False)
     key_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     key_prefix = db.Column(db.String(8))  # First 8 chars for identification
@@ -29,14 +35,18 @@ class APIKey(db.Model):
     last_used = db.Column(db.DateTime)
     usage_count = db.Column(db.Integer, default=0)
 
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
 
     # Relationships
-    user = db.relationship('UserModel', backref=db.backref('api_keys', lazy='dynamic'))
-    organization = db.relationship('OrganizationModel', backref=db.backref('api_keys', lazy='dynamic'))
+    user = db.relationship("UserModel", backref=db.backref("api_keys", lazy="dynamic"))
+    organization = db.relationship(
+        "OrganizationModel", backref=db.backref("api_keys", lazy="dynamic")
+    )
 
     def __repr__(self):
-        return f'<APIKey {self.key_prefix}... ({self.name})>'
+        return f"<APIKey {self.key_prefix}... ({self.name})>"
 
     @staticmethod
     def _hash_key(key):
@@ -45,11 +55,9 @@ class APIKey(db.Model):
         HMAC prevents rainbow-table attacks if the database is compromised:
         the attacker also needs SECRET_KEY to compute valid hashes.
         """
-        secret = current_app.config['SECRET_KEY']
+        secret = current_app.config["SECRET_KEY"]
         return hmac.new(
-            secret.encode('utf-8'),
-            key.encode('utf-8'),
-            hashlib.sha256
+            secret.encode("utf-8"), key.encode("utf-8"), hashlib.sha256
         ).hexdigest()
 
     @staticmethod
@@ -65,7 +73,7 @@ class APIKey(db.Model):
             Tuple (APIKey instance, plaintext_key).
             The plaintext key is only returned once and cannot be recovered.
         """
-        plaintext_key = f'sdk_{secrets.token_hex(32)}'
+        plaintext_key = f"sdk_{secrets.token_hex(32)}"
         key_hash = cls._hash_key(plaintext_key)
 
         api_key = cls(
@@ -117,7 +125,7 @@ class APIKey(db.Model):
         api_key.usage_count = (api_key.usage_count or 0) + 1
         db.session.commit()
 
-        return {'user_id': api_key.user_id, 'org_id': api_key.org_id}
+        return {"user_id": api_key.user_id, "org_id": api_key.org_id}
 
     @classmethod
     def deactivate(cls, key_id, user_id):

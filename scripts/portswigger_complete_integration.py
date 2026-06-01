@@ -6,12 +6,13 @@ Master script that runs all integration steps in sequence.
 Usage:
     python scripts/portswigger_complete_integration.py
 """
+
 import os
 import sys
 import subprocess
 from pathlib import Path
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.chdir(project_root)
 
 
@@ -37,9 +38,10 @@ def check_prerequisites():
     ok = True
 
     # Task 1
-    kb_path = Path('data/portswigger_knowledge/portswigger_knowledge.json')
+    kb_path = Path("data/portswigger_knowledge/portswigger_knowledge.json")
     if kb_path.exists():
         import json
+
         with open(kb_path) as f:
             kb = json.load(f)
         print(f"  ✓ Task 1: {len(kb.get('labs', []))} labs scraped")
@@ -49,7 +51,7 @@ def check_prerequisites():
         ok = False
 
     # Task 2
-    pm_path = Path('app/scanner/payload_manager.py')
+    pm_path = Path("app/scanner/payload_manager.py")
     if pm_path.exists():
         print("  ✓ Task 2: PayloadManager exists")
     else:
@@ -60,6 +62,7 @@ def check_prerequisites():
     try:
         sys.path.insert(0, project_root)
         from app.scanner.vulnerabilities.sql_injection import SQLInjectionScanner
+
         print("  ✓ Task 3: Scanners importable")
     except Exception as e:
         print(f"  ✗ Task 3: Import error — {e}")
@@ -69,10 +72,10 @@ def check_prerequisites():
 
 
 def main():
-    print('=' * 60)
-    print('  PortSwigger Web Security Academy')
-    print('  Complete Integration Workflow')
-    print('=' * 60)
+    print("=" * 60)
+    print("  PortSwigger Web Security Academy")
+    print("  Complete Integration Workflow")
+    print("=" * 60)
 
     if not check_prerequisites():
         print("\n  ✗ Prerequisites not met. Complete Tasks 1-3 first.")
@@ -81,10 +84,11 @@ def main():
     print("\n  ✓ All prerequisites met\n")
 
     steps = [
-        ("Step 1: Generate ML Training Data",
-         f"{sys.executable} scripts/portswigger_auto_trainer.py"),
-        ("Step 2: Train ML Models",
-         f"{sys.executable} scripts/train_ml_models.py"),
+        (
+            "Step 1: Generate ML Training Data",
+            f"{sys.executable} scripts/portswigger_auto_trainer.py",
+        ),
+        ("Step 2: Train ML Models", f"{sys.executable} scripts/train_ml_models.py"),
     ]
 
     for description, command in steps:
@@ -110,5 +114,5 @@ def main():
     print("    2. Check ML stats: http://localhost:5000/ml/stats")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

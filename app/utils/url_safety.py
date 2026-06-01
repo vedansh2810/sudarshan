@@ -19,33 +19,35 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+
 def _allow_local_targets() -> bool:
     """Read at call time so .env changes are picked up after load_dotenv()."""
-    return os.getenv('ALLOW_LOCAL_TARGETS', 'false').lower() in ('true', '1', 'yes')
+    return os.getenv("ALLOW_LOCAL_TARGETS", "false").lower() in ("true", "1", "yes")
+
 
 # IP ranges that must never be reached via user-supplied URLs
 _BLOCKED_RANGES = [
     # Loopback
-    ipaddress.ip_network('127.0.0.0/8'),
-    ipaddress.ip_network('::1/128'),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
     # RFC-1918 private
-    ipaddress.ip_network('10.0.0.0/8'),
-    ipaddress.ip_network('172.16.0.0/12'),
-    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
     # Link-local
-    ipaddress.ip_network('169.254.0.0/16'),
-    ipaddress.ip_network('fe80::/10'),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fe80::/10"),
     # Cloud metadata
-    ipaddress.ip_network('fd00:ec2::/32'),
+    ipaddress.ip_network("fd00:ec2::/32"),
     # Unique-local (IPv6 private)
-    ipaddress.ip_network('fc00::/7'),
+    ipaddress.ip_network("fc00::/7"),
 ]
 
 # Hostnames that are always blocked regardless of resolution
 _BLOCKED_HOSTNAMES = {
-    'metadata.google.internal',
-    'metadata.google',
-    'metadata',
+    "metadata.google.internal",
+    "metadata.google",
+    "metadata",
 }
 
 
@@ -66,7 +68,7 @@ def is_safe_url(url: str) -> tuple[bool, str]:
         parsed = urlparse(url)
         hostname = parsed.hostname
         if not hostname:
-            return False, 'URL has no hostname'
+            return False, "URL has no hostname"
 
         # Always block cloud metadata hostnames even in local mode
         if hostname.lower() in _BLOCKED_HOSTNAMES:
@@ -74,12 +76,13 @@ def is_safe_url(url: str) -> tuple[bool, str]:
 
         # Allow localhost / private IPs when explicitly enabled
         if _allow_local_targets():
-            return True, ''
+            return True, ""
 
         # Resolve hostname to IPs
         try:
-            addr_infos = socket.getaddrinfo(hostname, parsed.port or 80,
-                                             proto=socket.IPPROTO_TCP)
+            addr_infos = socket.getaddrinfo(
+                hostname, parsed.port or 80, proto=socket.IPPROTO_TCP
+            )
         except socket.gaierror:
             return False, f'Cannot resolve hostname "{hostname}"'
 
@@ -94,11 +97,11 @@ def is_safe_url(url: str) -> tuple[bool, str]:
                 if ip in blocked_net:
                     return False, (
                         f'Hostname "{hostname}" resolves to {ip_str} '
-                        f'which is in blocked range {blocked_net}'
+                        f"which is in blocked range {blocked_net}"
                     )
 
-        return True, ''
+        return True, ""
 
     except Exception as e:
-        logger.warning(f'URL safety check error: {e}')
-        return False, f'URL validation error: {e}'
+        logger.warning(f"URL safety check error: {e}")
+        return False, f"URL validation error: {e}"

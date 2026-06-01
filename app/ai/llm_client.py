@@ -50,7 +50,9 @@ class RateLimiter:
                     time.sleep(sleep_time)
                 now = time.time()
                 self._calls = [t for t in self._calls if now - t < self.period]
-                self._tokens = [(t, c) for t, c in self._tokens if now - t < self.period]
+                self._tokens = [
+                    (t, c) for t, c in self._tokens if now - t < self.period
+                ]
 
             # Check token budget
             if estimated_tokens > 0:
@@ -58,8 +60,10 @@ class RateLimiter:
                 if used_tokens + estimated_tokens > self.max_tokens and self._tokens:
                     sleep_time = self.period - (now - self._tokens[0][0])
                     if sleep_time > 0:
-                        logger.debug(f"Rate limit (tokens): sleeping {min(sleep_time, 15):.1f}s "
-                                     f"({used_tokens}+{estimated_tokens} > {self.max_tokens})")
+                        logger.debug(
+                            f"Rate limit (tokens): sleeping {min(sleep_time, 15):.1f}s "
+                            f"({used_tokens}+{estimated_tokens} > {self.max_tokens})"
+                        )
                         time.sleep(min(sleep_time, 15))
 
             self._calls.append(time.time())
@@ -81,27 +85,26 @@ class ResponseCache:
 
     def _key(self, prompt, context):
         raw = f"{prompt}::{context or ''}"
-        return hashlib.md5(raw.encode('utf-8', errors='ignore')).hexdigest()
+        return hashlib.md5(raw.encode("utf-8", errors="ignore")).hexdigest()
 
     def get(self, prompt, context=None):
         key = self._key(prompt, context)
         with self._lock:
             entry = self._cache.get(key)
-            if entry and (time.time() - entry['ts']) < self.ttl:
+            if entry and (time.time() - entry["ts"]) < self.ttl:
                 logger.debug("LLM cache hit")
-                return entry['value']
+                return entry["value"]
             return None
 
     def set(self, prompt, context, value):
         key = self._key(prompt, context)
         with self._lock:
-            self._cache[key] = {'value': value, 'ts': time.time()}
+            self._cache[key] = {"value": value, "ts": time.time()}
             # Evict stale entries if cache grows too large
             if len(self._cache) > 500:
                 now = time.time()
                 self._cache = {
-                    k: v for k, v in self._cache.items()
-                    if now - v['ts'] < self.ttl
+                    k: v for k, v in self._cache.items() if now - v["ts"] < self.ttl
                 }
 
 
@@ -115,7 +118,7 @@ class LLMClient:
 
     def __init__(self, groq_api_key=None, model_name=None):
         self.groq_api_key = groq_api_key
-        self.model_name = model_name or 'llama-3.3-70b-versatile'
+        self.model_name = model_name or "llama-3.3-70b-versatile"
 
         self._rate_limiter = RateLimiter(max_calls=28, period=60)  # Stay under 30 RPM
         self._cache = ResponseCache(ttl=3600)
@@ -126,8 +129,11 @@ class LLMClient:
     def from_config(cls, config):
         """Create LLMClient from Flask app config."""
         import os
-        groq_key = config.get('GROQ_API_KEY', '') or os.environ.get('GROQ_API_KEY', '')
-        model = config.get('GROQ_MODEL', '') or os.environ.get('GROQ_MODEL', 'llama-3.3-70b-versatile')
+
+        groq_key = config.get("GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
+        model = config.get("GROQ_MODEL", "") or os.environ.get(
+            "GROQ_MODEL", "llama-3.3-70b-versatile"
+        )
         return cls(
             groq_api_key=groq_key,
             model_name=model,
@@ -142,6 +148,7 @@ class LLMClient:
             return
         try:
             from groq import Groq
+
             self._groq_client = Groq(api_key=self.groq_api_key)
             logger.info(f"Groq client initialized (model: {self.model_name})")
         except Exception as e:
@@ -155,26 +162,27 @@ class LLMClient:
             raise RuntimeError("Groq client not available")
 
         # Estimate token count: ~4 chars per token for English text
-        total_chars = len(prompt) + len(context or '')
+        total_chars = len(prompt) + len(context or "")
         estimated_tokens = max(total_chars // 4, 100)
 
         self._rate_limiter.acquire(estimated_tokens=estimated_tokens)
 
         messages = []
         if context:
-            messages.append({
-                'role': 'system',
-                'content': f'You are a cybersecurity expert AI assistant helping with vulnerability analysis.\n\n--- CONTEXT ---\n{context}'
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"You are a cybersecurity expert AI assistant helping with vulnerability analysis.\n\n--- CONTEXT ---\n{context}",
+                }
+            )
         else:
-            messages.append({
-                'role': 'system',
-                'content': 'You are a cybersecurity expert AI assistant helping with vulnerability analysis.'
-            })
-        messages.append({
-            'role': 'user',
-            'content': prompt
-        })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "You are a cybersecurity expert AI assistant helping with vulnerability analysis.",
+                }
+            )
+        messages.append({"role": "user", "content": prompt})
 
         try:
             response = self._groq_client.chat.completions.create(
@@ -183,7 +191,7 @@ class LLMClient:
                 temperature=0.3,
                 max_tokens=4096,
             )
-            return response.choices[0].message.content or ''
+            return response.choices[0].message.content or ""
         except Exception as e:
             logger.error(f"Groq API error: {e}")
             raise
@@ -236,11 +244,11 @@ class LLMClient:
 
         # Strip markdown code fences if present
         text = raw.strip()
-        if text.startswith('```'):
-            lines = text.split('\n')
+        if text.startswith("```"):
+            lines = text.split("\n")
             # Remove first and last lines (code fences)
-            lines = [l for l in lines if not l.strip().startswith('```')]
-            text = '\n'.join(lines)
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            text = "\n".join(lines)
 
         try:
             return json.loads(text)
@@ -265,6 +273,7 @@ def get_llm_client(app=None):
     if _client_instance is None:
         if app is None:
             from flask import current_app
+
             app = current_app
         _client_instance = LLMClient.from_config(app.config)
     return _client_instance

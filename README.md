@@ -96,6 +96,8 @@ Finalize   →  Score calculation, webhook triggers, cleanup
 
 ## Quick Start
 
+See the detailed running and troubleshooting guide: [RUNNING](docs/RUNNING.md)
+
 ### Prerequisites
 - Python 3.12+
 - PostgreSQL (or Supabase) — falls back to SQLite for development

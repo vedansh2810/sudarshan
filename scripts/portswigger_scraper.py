@@ -124,16 +124,18 @@ class PortSwiggerScraper:
     def __init__(self):
         """Initialize the scraper with session and knowledge base."""
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Connection": "keep-alive",
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Connection": "keep-alive",
+            }
+        )
 
         self.knowledge_base = {
             "categories": {},
@@ -169,7 +171,9 @@ class PortSwiggerScraper:
             print(f"[!] The PortSwigger all-labs page loads labs via JavaScript.")
             print(f"[!] Run the extraction script first:")
             print(f"        python scripts/extract_lab_index.py")
-            print(f"[!] This requires Playwright: pip install playwright && playwright install chromium")
+            print(
+                f"[!] This requires Playwright: pip install playwright && playwright install chromium"
+            )
             return {}
 
         print(f"[*] Loading lab index from: {index_path}")
@@ -195,11 +199,13 @@ class PortSwiggerScraper:
             if category not in labs_by_category:
                 labs_by_category[category] = []
 
-            labs_by_category[category].append({
-                "title": title,
-                "url": url,
-                "difficulty": difficulty,
-            })
+            labs_by_category[category].append(
+                {
+                    "title": title,
+                    "url": url,
+                    "difficulty": difficulty,
+                }
+            )
 
         # Print summary
         total = sum(len(v) for v in labs_by_category.values())
@@ -320,9 +326,7 @@ class PortSwiggerScraper:
         # --- Find the main content section ---
         # PortSwigger lab pages use <div class="section theme-white"> inside <main>
         content_section = (
-            soup.find("div", class_="section")
-            or soup.find("main")
-            or soup
+            soup.find("div", class_="section") or soup.find("main") or soup
         )
 
         # --- Difficulty ---
@@ -345,7 +349,10 @@ class PortSwiggerScraper:
                 # Stop at solution divs or other major sections
                 if tag_name == "div" and current.get("class"):
                     classes = current.get("class", [])
-                    if "component-solution" in classes or "expandable-container" in classes:
+                    if (
+                        "component-solution" in classes
+                        or "expandable-container" in classes
+                    ):
                         break
                 if tag_name == "p":
                     text = current.get_text(strip=True)
@@ -521,8 +528,13 @@ class PortSwiggerScraper:
             re.IGNORECASE,
         )
         http_header_markers = [
-            "Content-Type:", "Host:", "Cookie:", "Transfer-Encoding:",
-            "Content-Length:", "Connection:", "User-Agent:",
+            "Content-Type:",
+            "Host:",
+            "Cookie:",
+            "Transfer-Encoding:",
+            "Content-Length:",
+            "Connection:",
+            "User-Agent:",
         ]
 
         for block in soup.find_all(["pre", "code"]):
@@ -592,15 +604,18 @@ class PortSwiggerScraper:
         for cat_idx, category in enumerate(all_categories, 1):
             display = self.CATEGORY_DISPLAY.get(category, category)
             cat_labs = labs_by_category[category]
-            print(f"[*] [{cat_idx}/{len(all_categories)}] "
-                  f"Category: {display} ({len(cat_labs)} labs)")
+            print(
+                f"[*] [{cat_idx}/{len(all_categories)}] "
+                f"Category: {display} ({len(cat_labs)} labs)"
+            )
 
             if category not in self.knowledge_base["payloads"]:
                 self.knowledge_base["payloads"][category] = []
 
             for lab_idx, lab_info in enumerate(cat_labs, 1):
-                print(f"    [{lab_idx}/{len(cat_labs)}] "
-                      f"{lab_info['title'][:65]}...")
+                print(
+                    f"    [{lab_idx}/{len(cat_labs)}] " f"{lab_info['title'][:65]}..."
+                )
 
                 time.sleep(delay)
                 lab_data = self.scrape_lab_solution(
@@ -608,19 +623,24 @@ class PortSwiggerScraper:
                 )
 
                 # Use difficulty from all-labs page if lab page didn't detect it
-                if lab_data["difficulty"] == "unknown" and lab_info.get("difficulty", "unknown") != "unknown":
+                if (
+                    lab_data["difficulty"] == "unknown"
+                    and lab_info.get("difficulty", "unknown") != "unknown"
+                ):
                     lab_data["difficulty"] = lab_info["difficulty"]
 
                 self.knowledge_base["labs"].append(lab_data)
 
                 # Collect payloads for the category
                 for payload in lab_data["payloads"]:
-                    self.knowledge_base["payloads"][category].append({
-                        "payload": payload["code"],
-                        "context": payload["context"],
-                        "difficulty": lab_data["difficulty"],
-                        "lab_title": lab_data["title"],
-                    })
+                    self.knowledge_base["payloads"][category].append(
+                        {
+                            "payload": payload["code"],
+                            "context": payload["context"],
+                            "difficulty": lab_data["difficulty"],
+                            "lab_title": lab_data["title"],
+                        }
+                    )
 
                 pc = len(lab_data["payloads"])
                 sc = len(lab_data["solution_steps"])
@@ -655,15 +675,19 @@ class PortSwiggerScraper:
 
         start_idx = all_cats.index(start_category)
         remaining = all_cats[start_idx:]
-        print(f"[*] Resuming from '{start_category}' "
-              f"({len(remaining)} categories remaining)")
+        print(
+            f"[*] Resuming from '{start_category}' "
+            f"({len(remaining)} categories remaining)"
+        )
 
         labs_scraped = 0
         for cat_idx, category in enumerate(remaining, 1):
             display = self.CATEGORY_DISPLAY.get(category, category)
             cat_labs = labs_by_category.get(category, [])
-            print(f"\n[*] [{cat_idx}/{len(remaining)}] "
-                  f"Category: {display} ({len(cat_labs)} labs)")
+            print(
+                f"\n[*] [{cat_idx}/{len(remaining)}] "
+                f"Category: {display} ({len(cat_labs)} labs)"
+            )
 
             if category not in self.knowledge_base["categories"]:
                 desc = self.scrape_category_description(category, delay=delay)
@@ -678,28 +702,35 @@ class PortSwiggerScraper:
 
             for lab_idx, lab_info in enumerate(cat_labs, 1):
                 # Skip already-scraped labs
-                if any(l["url"] == lab_info["url"]
-                       for l in self.knowledge_base["labs"]):
+                if any(
+                    l["url"] == lab_info["url"] for l in self.knowledge_base["labs"]
+                ):
                     continue
 
-                print(f"    [{lab_idx}/{len(cat_labs)}] "
-                      f"{lab_info['title'][:65]}...")
+                print(
+                    f"    [{lab_idx}/{len(cat_labs)}] " f"{lab_info['title'][:65]}..."
+                )
                 time.sleep(delay)
 
                 lab_data = self.scrape_lab_solution(
                     lab_info["url"], lab_info["title"], category
                 )
-                if lab_data["difficulty"] == "unknown" and lab_info.get("difficulty", "unknown") != "unknown":
+                if (
+                    lab_data["difficulty"] == "unknown"
+                    and lab_info.get("difficulty", "unknown") != "unknown"
+                ):
                     lab_data["difficulty"] = lab_info["difficulty"]
 
                 self.knowledge_base["labs"].append(lab_data)
                 for payload in lab_data["payloads"]:
-                    self.knowledge_base["payloads"][category].append({
-                        "payload": payload["code"],
-                        "context": payload["context"],
-                        "difficulty": lab_data["difficulty"],
-                        "lab_title": lab_data["title"],
-                    })
+                    self.knowledge_base["payloads"][category].append(
+                        {
+                            "payload": payload["code"],
+                            "context": payload["context"],
+                            "difficulty": lab_data["difficulty"],
+                            "lab_title": lab_data["title"],
+                        }
+                    )
 
                 pc = len(lab_data["payloads"])
                 sc = len(lab_data["solution_steps"])
@@ -734,8 +765,10 @@ class PortSwiggerScraper:
         payloads_path = os.path.join(output_dir, "payloads_by_category.json")
         with open(payloads_path, "w", encoding="utf-8") as f:
             json.dump(
-                self.knowledge_base["payloads"], f,
-                indent=2, ensure_ascii=False,
+                self.knowledge_base["payloads"],
+                f,
+                indent=2,
+                ensure_ascii=False,
             )
         size_mb = os.path.getsize(payloads_path) / (1024 * 1024)
         print(f"[+] Payloads saved: {payloads_path} ({size_mb:.2f} MB)")
@@ -796,7 +829,9 @@ class PortSwiggerScraper:
             print(f"    {display}: {count} labs")
         print()
 
-        sorted_payloads = sorted(payloads_by_cat.items(), key=lambda x: x[1], reverse=True)
+        sorted_payloads = sorted(
+            payloads_by_cat.items(), key=lambda x: x[1], reverse=True
+        )
         print("  Top Categories by Payload Count:")
         for cat, count in sorted_payloads[:10]:
             display = self.CATEGORY_DISPLAY.get(cat, cat)
@@ -810,6 +845,7 @@ class PortSwiggerScraper:
 # Entry point
 # ======================================================================
 
+
 def main():
     """Run the full scraper."""
     scraper = PortSwiggerScraper()
@@ -821,6 +857,7 @@ def main():
     except Exception as exc:
         print(f"\n[!] Unexpected error: {exc}")
         import traceback
+
         traceback.print_exc()
         print("[*] Saving partial results...")
 

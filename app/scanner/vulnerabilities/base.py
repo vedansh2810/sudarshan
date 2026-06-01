@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 class BaseScanner:
     def __init__(self, session=None, timeout=8, delay=0.05):
         self.session = session or requests.Session()
-        self.session.headers.update({'User-Agent': 'Sudarshan-Scanner/1.0'})
+        self.session.headers.update({"User-Agent": "Sudarshan-Scanner/1.0"})
         self.session.verify = False  # Allow scanning HTTPS with self-signed certs
         self.timeout = timeout
         self.delay = delay
         self.findings = []
         self._last_request_time = 0  # Track when last request was sent
-        self._baseline_cache = {}     # Cache baselines per URL
+        self._baseline_cache = {}  # Cache baselines per URL
 
         # SPA detection flag — set by ScanManager when AI recon detects
         # a React/Vue/Angular app. Scanners use this to skip futile tests.
@@ -43,15 +43,26 @@ class BaseScanner:
         so that structurally identical pages produce the same hash.
         """
         import hashlib
-        if not response or not hasattr(response, 'text'):
+
+        if not response or not hasattr(response, "text"):
             return None
-        text = response.text or ''
+        text = response.text or ""
         # Strip common dynamic content
-        text = re.sub(r'csrf[_-]?token["\']?\s*[:=]\s*["\'][^"\']+["\']', 'CSRF_TOKEN', text, flags=re.I)
-        text = re.sub(r'nonce\s*=\s*["\'][^"\']+["\']', 'NONCE', text, flags=re.I)
-        text = re.sub(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}', 'TIMESTAMP', text)
-        text = re.sub(r'session[_-]?id["\']?\s*[:=]\s*["\'][^"\']+["\']', 'SESSION', text, flags=re.I)
-        return hashlib.md5(text.encode('utf-8', errors='ignore')).hexdigest()
+        text = re.sub(
+            r'csrf[_-]?token["\']?\s*[:=]\s*["\'][^"\']+["\']',
+            "CSRF_TOKEN",
+            text,
+            flags=re.I,
+        )
+        text = re.sub(r'nonce\s*=\s*["\'][^"\']+["\']', "NONCE", text, flags=re.I)
+        text = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", "TIMESTAMP", text)
+        text = re.sub(
+            r'session[_-]?id["\']?\s*[:=]\s*["\'][^"\']+["\']',
+            "SESSION",
+            text,
+            flags=re.I,
+        )
+        return hashlib.md5(text.encode("utf-8", errors="ignore")).hexdigest()
 
     def _track_response(self, url, response):
         """Track response hash for a URL. Call this for each test request."""
@@ -69,6 +80,7 @@ class BaseScanner:
         if len(hashes) < min_samples:
             return False
         from collections import Counter
+
         most_common_count = Counter(hashes).most_common(1)[0][1]
         return (most_common_count / len(hashes)) >= threshold
 
@@ -83,9 +95,9 @@ class BaseScanner:
             if elapsed_since_last < self.delay:
                 time.sleep(self.delay - elapsed_since_last)
 
-            kwargs.setdefault('timeout', self.timeout)
-            kwargs.setdefault('allow_redirects', True)
-            kwargs.setdefault('verify', False)
+            kwargs.setdefault("timeout", self.timeout)
+            kwargs.setdefault("allow_redirects", True)
+            kwargs.setdefault("verify", False)
             start = time.time()
             response = self.session.request(method, url, **kwargs)
             self._last_request_time = time.time()
@@ -104,9 +116,9 @@ class BaseScanner:
             if elapsed_since_last < self.delay:
                 time.sleep(self.delay - elapsed_since_last)
 
-            kwargs.setdefault('timeout', max(self.timeout, 15))
-            kwargs.setdefault('allow_redirects', True)
-            kwargs.setdefault('verify', False)
+            kwargs.setdefault("timeout", max(self.timeout, 15))
+            kwargs.setdefault("allow_redirects", True)
+            kwargs.setdefault("verify", False)
             start = time.time()
             response = self.session.request(method, url, **kwargs)
             elapsed = time.time() - start
@@ -117,7 +129,7 @@ class BaseScanner:
         except Exception:
             return None, 0
 
-    def _get_baseline_time(self, url, method='GET', **kwargs):
+    def _get_baseline_time(self, url, method="GET", **kwargs):
         """Get average response time for baseline comparison.
         Results are cached per URL+method to avoid redundant measurements."""
         cache_key = f"{method}:{url}"
@@ -147,51 +159,81 @@ class BaseScanner:
         features = {}
 
         # Payload features
-        features['payload_length'] = len(payload) if payload else 0
-        features['payload_special_chars'] = sum(
-            1 for c in (payload or '') if c in "'\"<>;&|`$(){}[]\\"
+        features["payload_length"] = len(payload) if payload else 0
+        features["payload_special_chars"] = sum(
+            1 for c in (payload or "") if c in "'\"<>;&|`$(){}[]\\"
         )
-        features['payload_has_script_tag'] = 1 if '<script' in (payload or '').lower() else 0
-        features['payload_has_sql_keyword'] = 1 if any(
-            kw in (payload or '').upper()
-            for kw in ('SELECT', 'UNION', 'DROP', 'INSERT', 'DELETE', 'UPDATE', 'SLEEP', 'WAITFOR')
-        ) else 0
-        features['payload_has_encoding'] = 1 if '%' in (payload or '') else 0
+        features["payload_has_script_tag"] = (
+            1 if "<script" in (payload or "").lower() else 0
+        )
+        features["payload_has_sql_keyword"] = (
+            1
+            if any(
+                kw in (payload or "").upper()
+                for kw in (
+                    "SELECT",
+                    "UNION",
+                    "DROP",
+                    "INSERT",
+                    "DELETE",
+                    "UPDATE",
+                    "SLEEP",
+                    "WAITFOR",
+                )
+            )
+            else 0
+        )
+        features["payload_has_encoding"] = 1 if "%" in (payload or "") else 0
 
         # Baseline response features
         if baseline_response:
-            features['baseline_status'] = getattr(baseline_response, 'status_code', 0) or 0
-            features['baseline_length'] = len(getattr(baseline_response, 'text', '') or '')
+            features["baseline_status"] = (
+                getattr(baseline_response, "status_code", 0) or 0
+            )
+            features["baseline_length"] = len(
+                getattr(baseline_response, "text", "") or ""
+            )
         else:
-            features['baseline_status'] = 0
-            features['baseline_length'] = 0
+            features["baseline_status"] = 0
+            features["baseline_length"] = 0
 
         # Test response features
         if test_response:
-            features['test_status'] = getattr(test_response, 'status_code', 0) or 0
-            features['test_length'] = len(getattr(test_response, 'text', '') or '')
-            features['response_time'] = getattr(test_response, 'elapsed_time', 0) or 0
+            features["test_status"] = getattr(test_response, "status_code", 0) or 0
+            features["test_length"] = len(getattr(test_response, "text", "") or "")
+            features["response_time"] = getattr(test_response, "elapsed_time", 0) or 0
         else:
-            features['test_status'] = 0
-            features['test_length'] = 0
-            features['response_time'] = 0
+            features["test_status"] = 0
+            features["test_length"] = 0
+            features["response_time"] = 0
 
         # Comparison features
-        features['status_changed'] = 1 if features['baseline_status'] != features['test_status'] else 0
-        features['length_diff'] = abs(features['test_length'] - features['baseline_length'])
-        features['length_ratio'] = (
-            features['test_length'] / features['baseline_length']
-            if features['baseline_length'] > 0 else 0
+        features["status_changed"] = (
+            1 if features["baseline_status"] != features["test_status"] else 0
+        )
+        features["length_diff"] = abs(
+            features["test_length"] - features["baseline_length"]
+        )
+        features["length_ratio"] = (
+            features["test_length"] / features["baseline_length"]
+            if features["baseline_length"] > 0
+            else 0
         )
 
         # Error detection
-        test_text = getattr(test_response, 'text', '') or '' if test_response else ''
+        test_text = getattr(test_response, "text", "") or "" if test_response else ""
         error_patterns = self._detect_error_patterns(test_text)
-        features['error_count'] = len(error_patterns)
-        features['has_db_error'] = 1 if any('sql' in e.lower() or 'database' in e.lower() for e in error_patterns) else 0
+        features["error_count"] = len(error_patterns)
+        features["has_db_error"] = (
+            1
+            if any(
+                "sql" in e.lower() or "database" in e.lower() for e in error_patterns
+            )
+            else 0
+        )
 
         # Reflection
-        features['payload_reflected'] = 1 if payload and payload in test_text else 0
+        features["payload_reflected"] = 1 if payload and payload in test_text else 0
 
         return features
 
@@ -204,11 +246,11 @@ class BaseScanner:
             return []
 
         patterns = {
-            'sql_error': r'(?i)(sql\s*error|sql\s*syntax|mysql|sqlite|postgresql|ORA-\d{5})',
-            'php_error': r'(?i)(fatal\s+error|warning.*php|parse\s+error|notice:.*undefined)',
-            'python_error': r'(?i)(traceback\s*\(most\s+recent|internal\s+server\s+error)',
-            'path_disclosure': r'(?i)([A-Z]:\\\\|/home/|/var/www/|/usr/)',
-            'debug_info': r'(?i)(stack\s*trace|debug|exception\s+in)',
+            "sql_error": r"(?i)(sql\s*error|sql\s*syntax|mysql|sqlite|postgresql|ORA-\d{5})",
+            "php_error": r"(?i)(fatal\s+error|warning.*php|parse\s+error|notice:.*undefined)",
+            "python_error": r"(?i)(traceback\s*\(most\s+recent|internal\s+server\s+error)",
+            "path_disclosure": r"(?i)([A-Z]:\\\\|/home/|/var/www/|/usr/)",
+            "debug_info": r"(?i)(stack\s*trace|debug|exception\s+in)",
         }
 
         found = []
@@ -237,11 +279,12 @@ class BaseScanner:
         """
         try:
             from app.ai.smart_engine import get_smart_engine
+
             features = self._extract_features(baseline_response, test_response, payload)
             engine = get_smart_engine()
             return engine.ml_predict(features)
         except Exception as e:
-            logger.debug(f'ML verification skipped: {e}')
+            logger.debug(f"ML verification skipped: {e}")
             return True, 50.0
 
     def _ai_verify_finding(self, vuln_data, baseline_response, test_response, payload):
@@ -262,23 +305,34 @@ class BaseScanner:
         """
         try:
             from app.ai.smart_engine import get_smart_engine
+
             engine = get_smart_engine()
 
             features = self._extract_features(baseline_response, test_response, payload)
 
-            test_text = getattr(test_response, 'text', '') or '' if test_response else ''
+            test_text = (
+                getattr(test_response, "text", "") or "" if test_response else ""
+            )
             response_data = {
-                'status_code': getattr(test_response, 'status_code', None) if test_response else None,
-                'content_length': len(test_text),
-                'response_time': getattr(test_response, 'elapsed_time', None) if test_response else None,
-                'reflection_detected': bool(payload and payload in test_text),
-                'body_preview': self._sanitize_response_data(test_text[:500]),
+                "status_code": (
+                    getattr(test_response, "status_code", None)
+                    if test_response
+                    else None
+                ),
+                "content_length": len(test_text),
+                "response_time": (
+                    getattr(test_response, "elapsed_time", None)
+                    if test_response
+                    else None
+                ),
+                "reflection_detected": bool(payload and payload in test_text),
+                "body_preview": self._sanitize_response_data(test_text[:500]),
             }
 
             return engine.verify_finding(vuln_data, features, response_data)
         except Exception as e:
-            logger.debug(f'AI verification skipped: {e}')
-            return 'true_positive', 0.5, 'Verification unavailable'
+            logger.debug(f"AI verification skipped: {e}")
+            return "true_positive", 0.5, "Verification unavailable"
 
     # ── Smart Payload Generation ─────────────────────────────────────
 
@@ -298,6 +352,7 @@ class BaseScanner:
         """
         try:
             from app.ai.smart_engine import get_smart_engine
+
             engine = get_smart_engine()
             smart_results = engine.generate_smart_payloads(
                 vuln_type, target_context, num_payloads
@@ -306,24 +361,30 @@ class BaseScanner:
             payloads = []
             for item in smart_results:
                 if isinstance(item, dict):
-                    p = item.get('payload', '')
+                    p = item.get("payload", "")
                     if p:
                         payloads.append(p)
                 elif isinstance(item, str) and item:
                     payloads.append(item)
             if payloads:
-                logger.info(f'{vuln_type}: {len(payloads)} AI-generated payloads added')
+                logger.info(f"{vuln_type}: {len(payloads)} AI-generated payloads added")
             return payloads
         except Exception as e:
-            logger.debug(f'Smart payload generation skipped: {e}')
+            logger.debug(f"Smart payload generation skipped: {e}")
             return []
 
     # ── Response Data Sanitization ────────────────────────────────────
 
     _SENSITIVE_PATTERNS = [
-        (re.compile(r'Authorization:\s*\S+', re.IGNORECASE), 'Authorization: [REDACTED]'),
-        (re.compile(r'Set-Cookie:\s*[^\r\n]+', re.IGNORECASE), 'Set-Cookie: [REDACTED]'),
-        (re.compile(r'[a-zA-Z0-9+/=]{40,}'), '[LONG_TOKEN_REDACTED]'),
+        (
+            re.compile(r"Authorization:\s*\S+", re.IGNORECASE),
+            "Authorization: [REDACTED]",
+        ),
+        (
+            re.compile(r"Set-Cookie:\s*[^\r\n]+", re.IGNORECASE),
+            "Set-Cookie: [REDACTED]",
+        ),
+        (re.compile(r"[a-zA-Z0-9+/=]{40,}"), "[LONG_TOKEN_REDACTED]"),
     ]
 
     _MAX_RESPONSE_DATA_LENGTH = 2048
@@ -338,13 +399,24 @@ class BaseScanner:
         for pattern, replacement in cls._SENSITIVE_PATTERNS:
             text = pattern.sub(replacement, text)
         if len(text) > cls._MAX_RESPONSE_DATA_LENGTH:
-            text = text[:cls._MAX_RESPONSE_DATA_LENGTH] + '... [TRUNCATED]'
+            text = text[: cls._MAX_RESPONSE_DATA_LENGTH] + "... [TRUNCATED]"
         return text
 
-    def _record_attempt(self, url, param, payload, baseline_response,
-                        test_response, vuln_found, technique='',
-                        vuln_type='', confidence=0, severity='',
-                        method='GET', context='query_parameter'):
+    def _record_attempt(
+        self,
+        url,
+        param,
+        payload,
+        baseline_response,
+        test_response,
+        vuln_found,
+        technique="",
+        vuln_type="",
+        confidence=0,
+        severity="",
+        method="GET",
+        context="query_parameter",
+    ):
         """Record a scan attempt for ML training.
 
         Only records if collect_ml_data=True and current_scan_id is set.
@@ -360,42 +432,57 @@ class BaseScanner:
 
             features = self._extract_features(baseline_response, test_response, payload)
             error_patterns = self._detect_error_patterns(
-                getattr(test_response, 'text', '') or '' if test_response else ''
+                getattr(test_response, "text", "") or "" if test_response else ""
             )
 
             # Sanitize response text before storage
-            raw_response_text = getattr(test_response, 'text', '') or '' if test_response else ''
+            raw_response_text = (
+                getattr(test_response, "text", "") or "" if test_response else ""
+            )
             sanitized_text = self._sanitize_response_data(raw_response_text)
 
             ScanAttempt.create(
                 scan_id=self.current_scan_id,
                 request_data={
-                    'url': url,
-                    'parameter': param,
-                    'original_value': '',
-                    'payload': payload or '',
-                    'method': method,
-                    'context': context,
+                    "url": url,
+                    "parameter": param,
+                    "original_value": "",
+                    "payload": payload or "",
+                    "method": method,
+                    "context": context,
                 },
                 response_data={
-                    'status_code': getattr(test_response, 'status_code', None) if test_response else None,
-                    'content_length': len(getattr(test_response, 'text', '') or '') if test_response else None,
-                    'response_time': getattr(test_response, 'elapsed_time', None) if test_response else None,
-                    'error_patterns': error_patterns,
-                    'reflection_detected': bool(
-                        payload and test_response and payload in (getattr(test_response, 'text', '') or '')
+                    "status_code": (
+                        getattr(test_response, "status_code", None)
+                        if test_response
+                        else None
                     ),
-                    'body_preview': sanitized_text,
+                    "content_length": (
+                        len(getattr(test_response, "text", "") or "")
+                        if test_response
+                        else None
+                    ),
+                    "response_time": (
+                        getattr(test_response, "elapsed_time", None)
+                        if test_response
+                        else None
+                    ),
+                    "error_patterns": error_patterns,
+                    "reflection_detected": bool(
+                        payload
+                        and test_response
+                        and payload in (getattr(test_response, "text", "") or "")
+                    ),
+                    "body_preview": sanitized_text,
                 },
                 detection_result={
-                    'vulnerability_found': vuln_found,
-                    'vulnerability_type': vuln_type,
-                    'confidence': confidence,
-                    'technique': technique,
-                    'severity': severity,
+                    "vulnerability_found": vuln_found,
+                    "vulnerability_type": vuln_type,
+                    "confidence": confidence,
+                    "technique": technique,
+                    "severity": severity,
                 },
                 features=features,
             )
         except Exception as e:
-            logger.debug(f'ML data recording failed (non-fatal): {e}')
-
+            logger.debug(f"ML data recording failed (non-fatal): {e}")

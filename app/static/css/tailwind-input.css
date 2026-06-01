@@ -1,0 +1,4 @@
+/* Tailwind CSS build input — imports Tailwind layers, then custom styles */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

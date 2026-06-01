@@ -1,4 +1,5 @@
 """Centralized authentication utilities for all route blueprints."""
+
 import logging
 from datetime import datetime, timezone
 from functools import wraps
@@ -18,15 +19,16 @@ def login_required(f):
     Security: periodically re-validates the session user against the database
     to ensure deleted or deactivated users are logged out within 5 minutes.
     """
+
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            if request.is_json or request.path.startswith('/api/'):
-                return jsonify({'error': 'Authentication required'}), 401
-            return redirect(url_for('auth.login'))
+        if "user_id" not in session:
+            if request.is_json or request.path.startswith("/api/"):
+                return jsonify({"error": "Authentication required"}), 401
+            return redirect(url_for("auth.login"))
 
         # ── Periodic session integrity check ────────────────────────────
-        last_check = session.get('_last_validated', '')
+        last_check = session.get("_last_validated", "")
         now = datetime.now(timezone.utc)
         needs_check = True
 
@@ -39,23 +41,26 @@ def login_required(f):
 
         if needs_check:
             from app.models.user import User
-            user = User.get_by_id(session['user_id'])
+
+            user = User.get_by_id(session["user_id"])
             if not user:
                 logger.warning(
                     f"Session invalidated: user_id={session.get('user_id')} "
                     f"no longer exists in database"
                 )
                 from app.monitoring.security_logger import security_log
+
                 security_log.session_invalidated(
-                    user_id=session.get('user_id'),
+                    user_id=session.get("user_id"),
                     ip=request.remote_addr,
-                    reason='user_deleted'
+                    reason="user_deleted",
                 )
                 session.clear()
-                if request.is_json or request.path.startswith('/api/'):
-                    return jsonify({'error': 'Session expired'}), 401
-                return redirect(url_for('auth.login'))
-            session['_last_validated'] = now.isoformat()
+                if request.is_json or request.path.startswith("/api/"):
+                    return jsonify({"error": "Session expired"}), 401
+                return redirect(url_for("auth.login"))
+            session["_last_validated"] = now.isoformat()
 
         return f(*args, **kwargs)
+
     return decorated

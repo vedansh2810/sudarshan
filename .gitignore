@@ -22,10 +22,11 @@ env/
 .env
 .env.local
 
-# Data (local dev data should not be committed)
-data/
+# Data — keep databases and reports local, but ship ML models and knowledge base
+data/database.db
+data/reports/
+data/report_diagrams/
 logs/
-*.db
 
 # OS
 .DS_Store

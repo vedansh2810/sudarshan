@@ -2,6 +2,7 @@
 False Positive Classifier
 Ensemble ML model for reducing false positives in vulnerability scan results.
 """
+
 import os
 import json
 import logging
@@ -19,22 +20,22 @@ class FalsePositiveClassifier:
     """
 
     FEATURE_NAMES = [
-        'payload_length',
-        'payload_special_chars',
-        'payload_has_script_tag',
-        'payload_has_sql_keyword',
-        'payload_has_encoding',
-        'baseline_status',
-        'baseline_length',
-        'test_status',
-        'test_length',
-        'response_time',
-        'status_changed',
-        'length_diff',
-        'length_ratio',
-        'error_count',
-        'has_db_error',
-        'payload_reflected',
+        "payload_length",
+        "payload_special_chars",
+        "payload_has_script_tag",
+        "payload_has_sql_keyword",
+        "payload_has_encoding",
+        "baseline_status",
+        "baseline_length",
+        "test_status",
+        "test_length",
+        "response_time",
+        "status_changed",
+        "length_diff",
+        "length_ratio",
+        "error_count",
+        "has_db_error",
+        "payload_reflected",
     ]
 
     def __init__(self):
@@ -54,19 +55,25 @@ class FalsePositiveClassifier:
             import pandas as pd
             from app.models.ml_training import ScanAttempt
         except ImportError as e:
-            logger.error(f'ML dependencies missing: {e}')
+            logger.error(f"ML dependencies missing: {e}")
             return None, None
 
         labeled = ScanAttempt.get_labeled(vulnerability_type=vulnerability_type)
 
         if len(labeled) < 20:
-            logger.warning(f'Not enough labeled data ({len(labeled)}). Need at least 20.')
+            logger.warning(
+                f"Not enough labeled data ({len(labeled)}). Need at least 20."
+            )
             return None, None
 
         rows = []
         labels = []
         for attempt in labeled:
-            feature_dict = json.loads(attempt.features) if isinstance(attempt.features, str) else attempt.features
+            feature_dict = (
+                json.loads(attempt.features)
+                if isinstance(attempt.features, str)
+                else attempt.features
+            )
             row = [feature_dict.get(f, 0) for f in self.FEATURE_NAMES]
             rows.append(row)
             labels.append(1 if attempt.is_true_positive else 0)
@@ -86,11 +93,14 @@ class FalsePositiveClassifier:
             Dict of training metrics, or None on failure.
         """
         try:
-            from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+            from sklearn.ensemble import (
+                RandomForestClassifier,
+                GradientBoostingClassifier,
+            )
             from sklearn.model_selection import train_test_split, cross_val_score
             from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
         except ImportError:
-            logger.error('scikit-learn not installed. Run: pip install scikit-learn')
+            logger.error("scikit-learn not installed. Run: pip install scikit-learn")
             return None
 
         X, y = self.prepare_data_from_db(vulnerability_type)
@@ -99,7 +109,11 @@ class FalsePositiveClassifier:
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=42, stratify=y if len(np.unique(y)) > 1 else None,
+            X,
+            y,
+            test_size=test_size,
+            random_state=42,
+            stratify=y if len(np.unique(y)) > 1 else None,
         )
 
         # Train Random Forest
@@ -107,7 +121,7 @@ class FalsePositiveClassifier:
             n_estimators=100,
             max_depth=10,
             random_state=42,
-            class_weight='balanced',
+            class_weight="balanced",
         )
         self.rf_model.fit(X_train, y_train)
 
@@ -128,11 +142,13 @@ class FalsePositiveClassifier:
         ensemble_pred = np.round((rf_pred + gb_pred) / 2).astype(int)
 
         metrics = {
-            'training_samples': len(X_train),
-            'test_samples': len(X_test),
-            'training_accuracy': float(accuracy_score(y_train, self.rf_model.predict(X_train))),
-            'test_accuracy': float(accuracy_score(y_test, ensemble_pred)),
-            'f1_score': float(f1_score(y_test, ensemble_pred, zero_division=0)),
+            "training_samples": len(X_train),
+            "test_samples": len(X_test),
+            "training_accuracy": float(
+                accuracy_score(y_train, self.rf_model.predict(X_train))
+            ),
+            "test_accuracy": float(accuracy_score(y_test, ensemble_pred)),
+            "f1_score": float(f1_score(y_test, ensemble_pred, zero_division=0)),
         }
 
         # ROC AUC (only if both classes present)
@@ -140,17 +156,19 @@ class FalsePositiveClassifier:
             rf_proba = self.rf_model.predict_proba(X_test)[:, 1]
             gb_proba = self.gb_model.predict_proba(X_test)[:, 1]
             ensemble_proba = (rf_proba + gb_proba) / 2
-            metrics['roc_auc'] = float(roc_auc_score(y_test, ensemble_proba))
+            metrics["roc_auc"] = float(roc_auc_score(y_test, ensemble_proba))
         else:
-            metrics['roc_auc'] = 0.0
+            metrics["roc_auc"] = 0.0
 
         # Cross-validation
-        cv_scores = cross_val_score(self.rf_model, X, y, cv=min(5, len(y)), scoring='f1')
-        metrics['cv_f1_mean'] = float(np.mean(cv_scores))
-        metrics['cv_f1_std'] = float(np.std(cv_scores))
+        cv_scores = cross_val_score(
+            self.rf_model, X, y, cv=min(5, len(y)), scoring="f1"
+        )
+        metrics["cv_f1_mean"] = float(np.mean(cv_scores))
+        metrics["cv_f1_std"] = float(np.std(cv_scores))
 
         # Feature importances
-        metrics['feature_importances'] = dict(
+        metrics["feature_importances"] = dict(
             zip(self.FEATURE_NAMES, self.rf_model.feature_importances_.tolist())
         )
 
@@ -170,28 +188,31 @@ class FalsePositiveClassifier:
         try:
             import joblib
         except ImportError:
-            logger.error('joblib not installed.')
+            logger.error("joblib not installed.")
             return None
 
         if not self.is_trained:
-            logger.error('No trained model to save.')
+            logger.error("No trained model to save.")
             return None
 
         os.makedirs(model_dir, exist_ok=True)
-        version = version or datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-        model_path = os.path.join(model_dir, f'fp_classifier_v{version}.joblib')
+        version = version or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        model_path = os.path.join(model_dir, f"fp_classifier_v{version}.joblib")
 
-        joblib.dump({
-            'rf_model': self.rf_model,
-            'gb_model': self.gb_model,
-            'feature_names': self.FEATURE_NAMES,
-            'version': version,
-            'saved_at': datetime.now(timezone.utc).isoformat(),
-        }, model_path)
+        joblib.dump(
+            {
+                "rf_model": self.rf_model,
+                "gb_model": self.gb_model,
+                "feature_names": self.FEATURE_NAMES,
+                "version": version,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            },
+            model_path,
+        )
 
-        self.model_name = 'false_positive_classifier'
+        self.model_name = "false_positive_classifier"
         self.model_version = version
-        logger.info(f'Model saved to {model_path}')
+        logger.info(f"Model saved to {model_path}")
         return model_path
 
     def load(self, model_path):
@@ -206,23 +227,23 @@ class FalsePositiveClassifier:
         try:
             import joblib
         except ImportError:
-            logger.error('joblib not installed.')
+            logger.error("joblib not installed.")
             return False
 
         if not os.path.exists(model_path):
-            logger.error(f'Model file not found: {model_path}')
+            logger.error(f"Model file not found: {model_path}")
             return False
 
         try:
             data = joblib.load(model_path)
-            self.rf_model = data['rf_model']
-            self.gb_model = data['gb_model']
+            self.rf_model = data["rf_model"]
+            self.gb_model = data["gb_model"]
             self.is_trained = True
-            self.model_version = data.get('version', 'unknown')
-            logger.info(f'Model loaded from {model_path} (v{self.model_version})')
+            self.model_version = data.get("version", "unknown")
+            logger.info(f"Model loaded from {model_path} (v{self.model_version})")
             return True
         except Exception as e:
-            logger.error(f'Failed to load model: {e}')
+            logger.error(f"Failed to load model: {e}")
             return False
 
     def predict(self, features_dict):
@@ -253,5 +274,5 @@ class FalsePositiveClassifier:
 
             return bool(is_tp), float(min(confidence, 100.0))
         except Exception as e:
-            logger.debug(f'ML prediction failed (non-fatal): {e}')
+            logger.debug(f"ML prediction failed (non-fatal): {e}")
             return True, 50.0
