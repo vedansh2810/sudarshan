@@ -99,21 +99,13 @@ The app uses [Supabase](https://supabase.com/) for user authentication. You need
    ```
 3. Click **Save**
 
-This tells Supabase where to redirect users after login/signup (especially for Google OAuth).
+This tells Supabase where to redirect users after login/signup.
 
-#### Step 4: Enable Auth Providers
+#### Step 4: Enable Email Auth
 
-**Email (enabled by default):**
-- Go to **Authentication → Providers → Email**
+- Go to **Authentication -> Providers -> Email**
 - Ensure **Enable Email provider** is ON (it is by default)
-- (Optional) Turn OFF **Confirm email** for faster testing — users can log in immediately without email verification
-
-**Google OAuth (optional):**
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials**
-2. Create an **OAuth 2.0 Client ID** (Web application type)
-3. Add `https://YOUR_SUPABASE_PROJECT.supabase.co/auth/v1/callback` as an authorized redirect URI
-4. Copy the **Client ID** and **Client Secret**
-5. In Supabase: **Authentication → Providers → Google** → Enable and paste the credentials
+- (Optional) Turn OFF **Confirm email** for faster testing -- users can log in immediately without email verification
 
 ### Other Commands
 
