@@ -4,10 +4,11 @@ Sudarshan - One-Click Setup & Run Script
 =========================================
 
 Usage:
-    python start.py          # Setup (if needed) + Run
-    python start.py --setup  # Force re-run setup even if already done
-    python start.py --run    # Skip setup, just run
-    python start.py --check  # Check setup status without running
+    python start.py              # Setup (if needed) + Run
+    python start.py --setup      # Force re-run setup even if already done
+    python start.py --run        # Skip setup, just run
+    python start.py --check      # Check setup status without running
+    python start.py --setup-guide  # Show Supabase setup instructions
 
 Works on Windows, macOS, and Linux.
 """
@@ -173,7 +174,7 @@ def setup_env_file():
         if "your-supabase-anon-key" in content or "your-project.supabase.co" in content:
             log_warn(".env exists but has PLACEHOLDER values -- login/register won't work!")
             log_warn("Edit .env and fill in your Supabase credentials.")
-            log_warn("See .env.example for instructions on where to find them.")
+            log_warn("Run 'python start.py --setup-guide' for step-by-step instructions.")
         else:
             log_ok(".env configured")
         return
@@ -181,17 +182,8 @@ def setup_env_file():
     if ENV_EXAMPLE.exists():
         shutil.copy2(ENV_EXAMPLE, ENV_FILE)
         log_ok(".env created from .env.example")
-        log_warn("")
-        log_warn("+------------------------------------------------------+")
-        log_warn("|  ACTION REQUIRED: Edit .env with your credentials    |")
-        log_warn("+------------------------------------------------------+")
-        log_warn("|  1. Open .env in a text editor                       |")
-        log_warn("|  2. Set SECRET_KEY (generate a random string)        |")
-        log_warn("|  3. Set SUPABASE_URL, SUPABASE_ANON_KEY,             |")
-        log_warn("|     SUPABASE_SERVICE_KEY from your Supabase project  |")
-        log_warn("|  4. (Optional) Set GROQ_API_KEY for AI features      |")
-        log_warn("+------------------------------------------------------+")
-        log_warn("")
+        print()
+        _print_supabase_guide()
     else:
         log_warn(".env.example not found -- creating minimal .env")
         ENV_FILE.write_text(
@@ -202,6 +194,46 @@ def setup_env_file():
             'PORT=5000\n',
             encoding="utf-8"
         )
+
+def _print_supabase_guide():
+    """Print step-by-step Supabase setup guide to the terminal."""
+    print(f"  {YELLOW}{BOLD}+{'=' * 62}+{RESET}")
+    print(f"  {YELLOW}{BOLD}|  SUPABASE SETUP GUIDE (required for login/register)          |{RESET}")
+    print(f"  {YELLOW}{BOLD}+{'=' * 62}+{RESET}")
+    print()
+    print(f"  {CYAN}Step 1: Create a free Supabase project{RESET}")
+    print(f"    1. Go to https://supabase.com and click 'Start your project'")
+    print(f"    2. Sign in with GitHub")
+    print(f"    3. Click 'New Project'")
+    print(f"    4. Set project name (e.g. 'sudarshan'), pick a region, click Create")
+    print(f"    5. Wait ~2 minutes for it to provision")
+    print()
+    print(f"  {CYAN}Step 2: Copy your API credentials into .env{RESET}")
+    print(f"    1. In Supabase dashboard: Settings (gear icon) -> API")
+    print(f"    2. Copy these 3 values into your .env file:")
+    print()
+    print(f"       {GREEN}Project URL{RESET}                          -> SUPABASE_URL")
+    print(f"       {GREEN}anon public key{RESET}                      -> SUPABASE_ANON_KEY")
+    print(f"       {GREEN}service_role secret{RESET} (click 'Reveal') -> SUPABASE_SERVICE_KEY")
+    print()
+    print(f"  {CYAN}Step 3: Configure redirect URL{RESET}")
+    print(f"    1. In Supabase: Authentication -> URL Configuration")
+    print(f"    2. Under 'Redirect URLs', click 'Add URL'")
+    print(f"    3. Add: {GREEN}http://localhost:5000/auth/callback-handler{RESET}")
+    print(f"    4. Click Save")
+    print()
+    print(f"  {CYAN}Step 4: Enable auth providers{RESET}")
+    print(f"    - Email is enabled by default (no action needed)")
+    print(f"    - (Optional) Turn OFF 'Confirm email' for faster testing:")
+    print(f"      Authentication -> Providers -> Email -> Confirm email = OFF")
+    print(f"    - (Optional) Enable Google OAuth:")
+    print(f"      Authentication -> Providers -> Google -> add Client ID/Secret")
+    print()
+    print(f"  {YELLOW}+{'=' * 62}+{RESET}")
+    print(f"  {YELLOW}|  SECURITY: Never share SUPABASE_SERVICE_KEY with anyone.     |{RESET}")
+    print(f"  {YELLOW}|  Each tester should create their own Supabase project.       |{RESET}")
+    print(f"  {YELLOW}+{'=' * 62}+{RESET}")
+    print()
 
 def generate_secret_key():
     """Auto-generate SECRET_KEY if it's still the default."""
@@ -429,6 +461,10 @@ def main():
 
     if "--check" in args:
         do_check()
+        sys.exit(0)
+
+    if "--setup-guide" in args:
+        _print_supabase_guide()
         sys.exit(0)
 
     if "--setup" in args:

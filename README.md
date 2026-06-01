@@ -56,18 +56,64 @@ python start.py
 
 On subsequent runs, it detects the setup is complete and starts the server immediately.
 
-### Configure Supabase (Required for Login)
+### Configure Supabase (Required for Login/Register)
 
-1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard)
-2. Go to **Settings → API** and copy:
-   - Project URL → `SUPABASE_URL`
-   - anon public key → `SUPABASE_ANON_KEY`
-   - service_role secret → `SUPABASE_SERVICE_KEY`
-3. Go to **Authentication → URL Configuration** and add:
+The app uses [Supabase](https://supabase.com/) for user authentication. You need a free Supabase project to enable login and registration. Follow these steps:
+
+#### Step 1: Create a Supabase Project
+
+1. Go to [supabase.com](https://supabase.com/) and click **Start your project** (sign in with GitHub)
+2. Click **New Project**
+3. Fill in:
+   - **Project name:** anything (e.g., `sudarshan`)
+   - **Database password:** generate a strong password (save it, you won't need it in `.env` but may need it later)
+   - **Region:** choose the closest to you
+4. Click **Create new project** and wait ~2 minutes for provisioning
+
+#### Step 2: Get Your API Credentials
+
+1. In your Supabase project dashboard, go to **Settings** (gear icon in sidebar) → **API**
+2. You'll see three values — copy each one into your `.env` file:
+
+   | Dashboard Field | `.env` Variable |
+   |----------------|-----------------|
+   | **Project URL** | `SUPABASE_URL` |
+   | **Project API keys → `anon` `public`** | `SUPABASE_ANON_KEY` |
+   | **Project API keys → `service_role` `secret`** (click "Reveal") | `SUPABASE_SERVICE_KEY` |
+
+   Your `.env` should look like:
+   ```env
+   SUPABASE_URL=https://abcdefghij.supabase.co
+   SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+   SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+   ```
+
+> **Security Note:** The `anon` key is safe to share (it's public). The `service_role` key is **secret** — never share it or commit it to git. Each tester should create their own Supabase project.
+
+#### Step 3: Configure Redirect URL
+
+1. In Supabase dashboard, go to **Authentication** (left sidebar) → **URL Configuration**
+2. Under **Redirect URLs**, click **Add URL** and add:
    ```
    http://localhost:5000/auth/callback-handler
    ```
-4. Edit `.env` and paste your credentials
+3. Click **Save**
+
+This tells Supabase where to redirect users after login/signup (especially for Google OAuth).
+
+#### Step 4: Enable Auth Providers
+
+**Email (enabled by default):**
+- Go to **Authentication → Providers → Email**
+- Ensure **Enable Email provider** is ON (it is by default)
+- (Optional) Turn OFF **Confirm email** for faster testing — users can log in immediately without email verification
+
+**Google OAuth (optional):**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials**
+2. Create an **OAuth 2.0 Client ID** (Web application type)
+3. Add `https://YOUR_SUPABASE_PROJECT.supabase.co/auth/v1/callback` as an authorized redirect URI
+4. Copy the **Client ID** and **Client Secret**
+5. In Supabase: **Authentication → Providers → Google** → Enable and paste the credentials
 
 ### Other Commands
 
