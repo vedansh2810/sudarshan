@@ -107,6 +107,31 @@ This tells Supabase where to redirect users after login/signup.
 - Ensure **Enable Email provider** is ON (it is by default)
 - (Optional) Turn OFF **Confirm email** for faster testing -- users can log in immediately without email verification
 
+### Set Up Groq API Key (Optional -- for AI Features)
+
+The app uses [Groq](https://groq.com/) for AI-powered vulnerability analysis, executive summaries, and smart payload generation. Without it the app works fine, but AI features will be disabled.
+
+#### Step 1: Create a Groq Account
+
+1. Go to [console.groq.com](https://console.groq.com/) and sign up (free tier available)
+2. Verify your email
+
+#### Step 2: Generate an API Key
+
+1. In the Groq dashboard, go to **API Keys** (left sidebar)
+2. Click **Create API Key**
+3. Give it a name (e.g., `sudarshan`) and click **Submit**
+4. **Copy the key immediately** -- it won't be shown again
+
+#### Step 3: Add to `.env`
+
+Add this line to your `.env` file:
+```env
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+That's it. The app will automatically detect the key and enable AI features on the next run. The free tier gives you generous rate limits for testing.
+
 ### Other Commands
 
 ```bash
