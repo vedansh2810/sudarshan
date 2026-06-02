@@ -165,25 +165,28 @@ def install_python_deps():
     log_ok("Python dependencies installed")
 
 def setup_env_file():
-    """Copy .env.example to .env if .env doesn't exist."""
+    """Copy .env.example to .env if .env doesn't exist, then prompt for credentials."""
     log("Checking .env file...")
 
     if ENV_FILE.exists():
-        # Check if it still has placeholder values
         content = ENV_FILE.read_text(encoding="utf-8")
-        if "your-supabase-anon-key" in content or "your-project.supabase.co" in content:
+        has_placeholders = (
+            "your-supabase-anon-key" in content
+            or "your-project.supabase.co" in content
+        )
+        if has_placeholders:
             log_warn(".env exists but has PLACEHOLDER values -- login/register won't work!")
-            log_warn("Edit .env and fill in your Supabase credentials.")
-            log_warn("Run 'python start.py --setup-guide' for step-by-step instructions.")
+            print()
+            _print_supabase_guide()
+            _prompt_credentials()
         else:
             log_ok(".env configured")
         return
 
+    # Create .env from template
     if ENV_EXAMPLE.exists():
         shutil.copy2(ENV_EXAMPLE, ENV_FILE)
         log_ok(".env created from .env.example")
-        print()
-        _print_supabase_guide()
     else:
         log_warn(".env.example not found -- creating minimal .env")
         ENV_FILE.write_text(
@@ -191,9 +194,85 @@ def setup_env_file():
             'SECRET_KEY=change-me\n'
             'FLASK_ENV=development\n'
             'FLASK_DEBUG=1\n'
-            'PORT=5000\n',
+            'PORT=5000\n'
+            'SUPABASE_URL=https://your-project.supabase.co\n'
+            'SUPABASE_ANON_KEY=your-supabase-anon-key\n'
+            'SUPABASE_SERVICE_KEY=your-supabase-service-key\n'
+            'GROQ_API_KEY=your-groq-api-key\n',
             encoding="utf-8"
         )
+
+    print()
+    _print_supabase_guide()
+    _prompt_credentials()
+
+
+def _prompt_credentials():
+    """Interactively prompt for Supabase and Groq credentials and write to .env."""
+    print(f"  {CYAN}{BOLD}Enter your credentials below (paste from Supabase dashboard).{RESET}")
+    print(f"  {DIM}  Press Enter to skip any field (you can edit .env later).{RESET}")
+    print()
+
+    # Read current .env content
+    content = ENV_FILE.read_text(encoding="utf-8")
+    changed = False
+
+    # Supabase URL
+    supabase_url = _ask("  SUPABASE_URL (Project URL): ").strip()
+    if supabase_url:
+        content = _replace_env_value(content, "SUPABASE_URL", supabase_url)
+        changed = True
+
+    # Supabase Anon Key
+    anon_key = _ask("  SUPABASE_ANON_KEY (anon public key): ").strip()
+    if anon_key:
+        content = _replace_env_value(content, "SUPABASE_ANON_KEY", anon_key)
+        changed = True
+
+    # Supabase Service Key
+    service_key = _ask("  SUPABASE_SERVICE_KEY (service_role secret): ").strip()
+    if service_key:
+        content = _replace_env_value(content, "SUPABASE_SERVICE_KEY", service_key)
+        changed = True
+
+    # Groq API Key (optional)
+    print()
+    groq_key = _ask(f"  GROQ_API_KEY (optional, press Enter to skip): ").strip()
+    if groq_key:
+        content = _replace_env_value(content, "GROQ_API_KEY", groq_key)
+        changed = True
+
+    if changed:
+        ENV_FILE.write_text(content, encoding="utf-8")
+        print()
+        log_ok("Credentials saved to .env")
+    else:
+        print()
+        log_warn("No credentials entered -- edit .env manually or re-run: python start.py --setup")
+
+
+def _ask(prompt):
+    """Prompt user for input, handling EOF gracefully."""
+    try:
+        return input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return ""
+
+
+def _replace_env_value(content, key, value):
+    """Replace an env variable's value in .env content string."""
+    import re
+    # Match KEY=anything (including empty) up to end of line
+    pattern = rf'^{re.escape(key)}=.*$'
+    replacement = f'{key}={value}'
+    new_content, count = re.subn(pattern, replacement, content, flags=re.MULTILINE)
+    if count == 0:
+        # Key not found, append it
+        if not new_content.endswith('\n'):
+            new_content += '\n'
+        new_content += f'{replacement}\n'
+    return new_content
 
 def _print_supabase_guide():
     """Print step-by-step Supabase setup guide to the terminal."""
