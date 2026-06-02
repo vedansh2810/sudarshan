@@ -23,11 +23,8 @@ limiter = Limiter(
 
 
 def create_app(config=None):
-    # Load .env file early (python-dotenv is already in requirements)
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
+    # Note: .env is loaded at module level in app/config.py (via load_dotenv)
+    # so env vars are available before Config class attributes are evaluated.
     app = Flask(__name__)
     app.config.from_object(config or DevelopmentConfig)
 

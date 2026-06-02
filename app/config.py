@@ -1,5 +1,12 @@
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# Load .env file FIRST, before Config class attributes read os.environ.
+# This MUST happen at module level (not inside create_app) because Config
+# class attributes like SUPABASE_URL = os.environ.get(...) are evaluated
+# at import time when Python first loads this module.
+load_dotenv()
 
 # Project root is two levels up from this file (app/config.py -> app/ -> project root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
