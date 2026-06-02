@@ -9,9 +9,8 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-me")
 
     # ── Database (PostgreSQL via Supabase) ────────────────────────────────
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "sqlite:///" + os.path.join(PROJECT_ROOT, "data", "database.db")
-    )
+    _sqlite_default = "sqlite:///" + os.path.join(PROJECT_ROOT, "data", "database.db")
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "") or _sqlite_default
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_size": 10,
@@ -59,6 +58,7 @@ class Config:
 
     # AI / LLM Configuration (Groq — Llama 3.3 70B)
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+    GROQ_API_KEYS = os.environ.get("GROQ_API_KEYS", "")  # Comma-separated, for key rotation
     GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     SCAN_SPEEDS = {
