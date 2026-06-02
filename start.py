@@ -235,12 +235,37 @@ def _prompt_credentials():
         content = _replace_env_value(content, "SUPABASE_SERVICE_KEY", service_key)
         changed = True
 
-    # Groq API Key (optional)
+    # Groq API Keys (optional, supports multiple)
     print()
-    groq_key = _ask(f"  GROQ_API_KEY (optional, press Enter to skip): ").strip()
-    if groq_key:
-        content = _replace_env_value(content, "GROQ_API_KEY", groq_key)
+    print(f"  {DIM}  Groq API keys enable AI features (vulnerability analysis, smart payloads).{RESET}")
+    print(f"  {DIM}  You can add multiple keys for rotation (one per line, or comma-separated).{RESET}")
+    print(f"  {DIM}  Press Enter to skip.{RESET}")
+    print()
+
+    groq_keys = []
+    first_key = _ask("  GROQ API KEY #1 (or comma-separated list): ").strip()
+    if first_key:
+        # Check if user pasted comma-separated keys
+        if "," in first_key:
+            groq_keys = [k.strip() for k in first_key.split(",") if k.strip()]
+        else:
+            groq_keys.append(first_key)
+            # Prompt for more keys
+            while True:
+                next_key = _ask(f"  GROQ API KEY #{len(groq_keys) + 1} (Enter to finish): ").strip()
+                if not next_key:
+                    break
+                groq_keys.append(next_key)
+
+    if groq_keys:
+        if len(groq_keys) == 1:
+            content = _replace_env_value(content, "GROQ_API_KEY", groq_keys[0])
+        else:
+            content = _replace_env_value(content, "GROQ_API_KEYS", ",".join(groq_keys))
+            # Clear single key if multi-key is set
+            content = _replace_env_value(content, "GROQ_API_KEY", "")
         changed = True
+        log_ok(f"{len(groq_keys)} Groq API key(s) configured")
 
     if changed:
         ENV_FILE.write_text(content, encoding="utf-8")
@@ -313,8 +338,9 @@ def _print_supabase_guide():
     print(f"    2. Go to 'API Keys' in the left sidebar")
     print(f"    3. Click 'Create API Key', name it, click Submit")
     print(f"    4. Copy the key (starts with {GREEN}gsk_{RESET}...)")
-    print(f"    5. Add to .env: {GREEN}GROQ_API_KEY=gsk_your_key_here{RESET}")
-    print(f"    Without this, the app works fine but AI features are disabled.")
+    print(f"    5. You can create multiple keys for better rate limits!")
+    print(f"       The setup will prompt you to enter them one by one.")
+    print(f"    Without Groq keys, the app works fine but AI features are disabled.")
     print()
     print(f"  {YELLOW}+{'=' * 62}+{RESET}")
     print(f"  {YELLOW}|  SECURITY: Never share SUPABASE_SERVICE_KEY with anyone.     |{RESET}")

@@ -1,9 +1,18 @@
 """LLM Client — Groq (Llama 3.3 70B).
 
 Provides a unified interface for LLM calls with:
+- Multi-key rotation (round-robin) to spread rate limits across keys
+- Automatic failover: if one key is rate-limited, tries the next key
 - Response caching (TTL-based) to avoid redundant API calls
-- Rate limiting for Groq API (30 RPM free tier)
+- Rate limiting per key for Groq API (30 RPM free tier)
 - Thread-safe singleton access
+
+Configuration:
+    # Single key (backward compatible)
+    GROQ_API_KEY=gsk_xxx
+
+    # Multiple keys (comma-separated, round-robin rotation)
+    GROQ_API_KEYS=gsk_key1,gsk_key2,gsk_key3
 """
 
 import json
@@ -109,63 +118,91 @@ class ResponseCache:
 
 
 class LLMClient:
-    """Groq LLM client using Llama 3.3 70B.
+    """Groq LLM client with multi-key rotation.
+
+    Supports multiple API keys for round-robin rotation. If a key hits
+    a rate limit, automatically tries the next key.
 
     Usage:
         client = LLMClient.from_config(app.config)
         result = client.generate("Analyze this vulnerability...", context="...")
     """
 
-    def __init__(self, groq_api_key=None, model_name=None):
-        self.groq_api_key = groq_api_key
+    def __init__(self, api_keys=None, model_name=None):
+        # Accept a list of keys or a single key
+        if isinstance(api_keys, str):
+            api_keys = [k.strip() for k in api_keys.split(",") if k.strip()]
+        self._api_keys = api_keys or []
         self.model_name = model_name or "llama-3.3-70b-versatile"
 
-        self._rate_limiter = RateLimiter(max_calls=28, period=60)  # Stay under 30 RPM
+        self._rate_limiter = RateLimiter(max_calls=28, period=60)
         self._cache = ResponseCache(ttl=3600)
-        self._groq_client = None
-        self._initialized = False
+        self._groq_clients = {}  # key -> Groq client (lazy init)
+        self._key_index = 0  # current round-robin position
+        self._key_lock = threading.Lock()
+
+        if len(self._api_keys) > 1:
+            logger.info(f"Groq multi-key rotation enabled ({len(self._api_keys)} keys)")
+
+    # Backward compat: expose first key as .groq_api_key
+    @property
+    def groq_api_key(self):
+        return self._api_keys[0] if self._api_keys else None
 
     @classmethod
     def from_config(cls, config):
         """Create LLMClient from Flask app config."""
         import os
 
-        groq_key = config.get("GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
+        # Try multi-key first (GROQ_API_KEYS), fall back to single key
+        keys_str = (
+            config.get("GROQ_API_KEYS", "")
+            or os.environ.get("GROQ_API_KEYS", "")
+        )
+        if not keys_str:
+            # Fall back to single GROQ_API_KEY
+            single_key = (
+                config.get("GROQ_API_KEY", "")
+                or os.environ.get("GROQ_API_KEY", "")
+            )
+            keys_str = single_key
+
         model = config.get("GROQ_MODEL", "") or os.environ.get(
             "GROQ_MODEL", "llama-3.3-70b-versatile"
         )
-        return cls(
-            groq_api_key=groq_key,
-            model_name=model,
-        )
+        return cls(api_keys=keys_str, model_name=model)
 
-    def _init_groq(self):
-        """Lazy-initialize Groq client."""
-        if self._groq_client is not None:
-            return
-        if not self.groq_api_key:
-            logger.warning("No GROQ_API_KEY set — Groq unavailable")
-            return
-        try:
-            from groq import Groq
+    def _get_next_key(self):
+        """Get the next API key in round-robin order (thread-safe)."""
+        with self._key_lock:
+            if not self._api_keys:
+                return None
+            key = self._api_keys[self._key_index % len(self._api_keys)]
+            self._key_index += 1
+            return key
 
-            self._groq_client = Groq(api_key=self.groq_api_key)
-            logger.info(f"Groq client initialized (model: {self.model_name})")
-        except Exception as e:
-            logger.error(f"Failed to initialize Groq: {e}")
-            self._groq_client = None
+    def _get_groq_client(self, api_key):
+        """Get or create a Groq client for the given API key (lazy init)."""
+        if api_key not in self._groq_clients:
+            try:
+                from groq import Groq
+                self._groq_clients[api_key] = Groq(api_key=api_key)
+                # Log with masked key for security
+                masked = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
+                logger.info(f"Groq client initialized for key {masked} (model: {self.model_name})")
+            except Exception as e:
+                logger.error(f"Failed to initialize Groq client: {e}")
+                return None
+        return self._groq_clients[api_key]
 
     def _groq_generate(self, prompt, context=None):
-        """Call Groq API with token-aware rate limiting."""
-        self._init_groq()
-        if not self._groq_client:
-            raise RuntimeError("Groq client not available")
+        """Call Groq API with key rotation and automatic failover."""
+        if not self._api_keys:
+            raise RuntimeError("No Groq API keys configured")
 
         # Estimate token count: ~4 chars per token for English text
         total_chars = len(prompt) + len(context or "")
         estimated_tokens = max(total_chars // 4, 100)
-
-        self._rate_limiter.acquire(estimated_tokens=estimated_tokens)
 
         messages = []
         if context:
@@ -184,19 +221,49 @@ class LLMClient:
             )
         messages.append({"role": "user", "content": prompt})
 
-        try:
-            response = self._groq_client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=0.3,
-                max_tokens=4096,
-            )
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            logger.error(f"Groq API error: {e}")
-            raise
-        finally:
-            self._rate_limiter.release()
+        # Try each key up to the total number of keys
+        last_error = None
+        attempts = len(self._api_keys)
+
+        for attempt in range(attempts):
+            api_key = self._get_next_key()
+            client = self._get_groq_client(api_key)
+            if not client:
+                continue
+
+            self._rate_limiter.acquire(estimated_tokens=estimated_tokens)
+            try:
+                response = client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=4096,
+                )
+                return response.choices[0].message.content or ""
+            except Exception as e:
+                self._rate_limiter.release()
+                last_error = e
+                error_str = str(e).lower()
+                # If rate limited, try the next key
+                if "rate_limit" in error_str or "429" in error_str:
+                    masked = api_key[:8] + "..." if len(api_key) > 8 else "***"
+                    logger.warning(
+                        f"Groq key {masked} rate-limited, rotating to next key "
+                        f"(attempt {attempt + 1}/{attempts})"
+                    )
+                    continue
+                # For other errors, don't retry
+                logger.error(f"Groq API error: {e}")
+                raise
+            finally:
+                try:
+                    self._rate_limiter.release()
+                except ValueError:
+                    pass  # Already released in the except block above
+
+        # All keys exhausted
+        logger.error(f"All {attempts} Groq API keys are rate-limited")
+        raise last_error or RuntimeError("All Groq API keys exhausted")
 
     def generate(self, prompt, context=None, use_cache=True):
         """Generate text using Groq LLM.
@@ -259,7 +326,12 @@ class LLMClient:
     @property
     def is_available(self):
         """Check if the LLM client is configured and ready."""
-        return bool(self.groq_api_key)
+        return bool(self._api_keys)
+
+    @property
+    def key_count(self):
+        """Number of API keys configured."""
+        return len(self._api_keys)
 
 
 # ── Singleton for app-wide use ───────────────────────────────────────
