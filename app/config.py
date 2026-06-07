@@ -11,9 +11,11 @@ load_dotenv()
 # Project root is two levels up from this file (app/config.py -> app/ -> project root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+import secrets
+
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-me")
+    SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
     # ── Database (PostgreSQL via Supabase) ────────────────────────────────
     _sqlite_default = "sqlite:///" + os.path.join(PROJECT_ROOT, "data", "database.db")
@@ -106,6 +108,12 @@ class Config:
         "ssti",
         "jwt_attacks",
         "broken_auth",
+        "nosql_injection",
+        "file_upload",
+        "host_header",
+        "info_disclosure",
+        "prototype_pollution",
+        "insecure_deserialization",
     ]
 
     # Allow skipping TLS verification for testing local/unsafe targets.

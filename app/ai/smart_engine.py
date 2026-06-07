@@ -177,6 +177,31 @@ class SmartEngine:
     Thread-safe singleton. All methods fail gracefully — never blocks scanning.
     """
 
+    # Map scanner vuln types to PortSwigger category slugs
+    TYPE_TO_CATEGORIES = {
+        "sql_injection": ["sql-injection"],
+        "xss": ["cross-site-scripting", "dom-based-vulnerabilities"],
+        "csrf": ["cross-site-request-forgery-csrf"],
+        "command_injection": ["os-command-injection"],
+        "directory_traversal": ["path-traversal"],
+        "xxe": ["xml-external-entity-xxe-injection"],
+        "ssrf": ["server-side-request-forgery-ssrf"],
+        "clickjacking": ["clickjacking"],
+        "cors": ["cross-origin-resource-sharing-cors"],
+        "ssti": ["server-side-template-injection"],
+        "broken_auth": ["authentication"],
+        "jwt_attacks": ["jwt"],
+        "open_redirect": ["dom-based-vulnerabilities", "access-control-vulnerabilities"],
+        "idor": ["access-control-vulnerabilities"],
+        "security_headers": ["clickjacking", "cross-origin-resource-sharing-cors"],
+        "nosql_injection": ["nosql-injection"],
+        "file_upload": ["file-upload-vulnerabilities"],
+        "host_header": ["http-host-header-attacks"],
+        "info_disclosure": ["information-disclosure"],
+        "prototype_pollution": ["prototype-pollution"],
+        "insecure_deserialization": ["insecure-deserialization"],
+    }
+
     def __init__(self):
         self._portswigger_kb = None
         self._ml_classifier = None
@@ -234,25 +259,7 @@ class SmartEngine:
         if not self._portswigger_kb:
             return "No PortSwigger data available."
 
-        # Map scanner vuln_type to PortSwigger category slugs
-        TYPE_TO_CATEGORIES = {
-            "sql_injection": ["sql-injection"],
-            "xss": ["cross-site-scripting", "dom-based-vulnerabilities"],
-            "csrf": ["cross-site-request-forgery-csrf"],
-            "command_injection": ["os-command-injection"],
-            "directory_traversal": ["path-traversal"],
-            "xxe": ["xml-external-entity-xxe-injection"],
-            "ssrf": ["server-side-request-forgery-ssrf"],
-            "clickjacking": ["clickjacking"],
-            "cors": ["cross-origin-resource-sharing-cors"],
-            "ssti": ["server-side-template-injection"],
-            "broken_auth": ["authentication"],
-            "jwt_attacks": ["jwt"],
-            "open_redirect": ["authentication"],  # often discussed together
-            "idor": ["access-control-vulnerabilities"],
-        }
-
-        categories = TYPE_TO_CATEGORIES.get(vuln_type, [])
+        categories = self.TYPE_TO_CATEGORIES.get(vuln_type, [])
         if not categories:
             return f"No PortSwigger context for vulnerability type: {vuln_type}"
 
@@ -312,23 +319,7 @@ class SmartEngine:
         if not self._portswigger_kb:
             return []
 
-        TYPE_TO_CATEGORIES = {
-            "sql_injection": ["sql-injection"],
-            "xss": ["cross-site-scripting", "dom-based-vulnerabilities"],
-            "csrf": ["cross-site-request-forgery-csrf"],
-            "command_injection": ["os-command-injection"],
-            "directory_traversal": ["path-traversal"],
-            "xxe": ["xml-external-entity-xxe-injection"],
-            "ssrf": ["server-side-request-forgery-ssrf"],
-            "ssti": ["server-side-template-injection"],
-            "clickjacking": ["clickjacking"],
-            "cors": ["cross-origin-resource-sharing-cors"],
-            "broken_auth": ["authentication"],
-            "jwt_attacks": ["jwt"],
-            "idor": ["access-control-vulnerabilities"],
-        }
-
-        categories = TYPE_TO_CATEGORIES.get(vuln_type, [])
+        categories = self.TYPE_TO_CATEGORIES.get(vuln_type, [])
         labs = self._portswigger_kb.get("labs", [])
 
         return [
@@ -504,7 +495,7 @@ class SmartEngine:
                 )
                 return payloads
         except Exception as e:
-            logger.debug(f"Smart payload generation failed: {e}")
+            logger.warning(f"Smart payload generation failed for {vuln_type}: {e}")
 
         return []
 

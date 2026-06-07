@@ -16,20 +16,22 @@
 
 ---
 
-Sudarshan is an **AI-powered web vulnerability scanner** that combines automated security testing with LLM-driven analysis. It discovers and tests web application endpoints for 15 vulnerability classes, enriches findings with PortSwigger Web Security Academy references, and uses machine learning to filter false positives.
+Sudarshan is an **AI-powered web vulnerability scanner** that combines automated security testing with LLM-driven analysis. It discovers and tests web application endpoints for **22 vulnerability classes**, enriches findings with PortSwigger Web Security Academy references, and uses machine learning to filter false positives.
 
 ## Features
 
-- **15 Vulnerability Scanners** — SQL Injection, XSS, Command Injection, SSRF, XXE, CSRF, CORS, Clickjacking, SSTI, IDOR, JWT Attacks, Broken Auth, Open Redirect, Directory Traversal, Security Headers
+- **22 Vulnerability Scanners** — SQL Injection, XSS, Command Injection, SSRF, XXE, CSRF, CORS, Clickjacking, SSTI, IDOR, Directory Listing, JWT Attacks, Broken Auth, Open Redirect, Directory Traversal, Security Headers, NoSQL Injection, File Upload, Host Header Attacks, Information Disclosure, Prototype Pollution, Insecure Deserialization
 - **AI-Powered Analysis** — Groq LLM (Llama 3.3 70B) generates executive summaries, remediation plans, and attack narratives
+- **Multi-Key LLM Rotation** — Round-robin across multiple Groq API keys with automatic failover on rate limits
 - **PortSwigger Integration** — 2,000+ payloads from PortSwigger Web Security Academy with lab references
 - **ML False-Positive Filter** — Random Forest + Gradient Boosting ensemble classifier reduces noise
 - **Real-Time Progress** — Server-Sent Events (SSE) with automatic polling fallback
-- **PDF Reports** — Professional security assessment reports with AI-generated insights
+- **PDF & HTML Reports** — Professional security assessment reports with AI-generated insights
 - **Multi-Tenant** — Organizations with role-based access (owner, admin, member, viewer)
-- **REST API (v2)** — Full JSON API with API key authentication for CI/CD integration
+- **REST API (v2)** — Full JSON API with session authentication for CI/CD integration
 - **Webhooks** — Event-driven notifications on scan completion, errors, and vulnerability discovery
 - **DVWA Integration** — Auto-login support for testing against Damn Vulnerable Web Application
+- **Scan Controls** — Pause, resume, and stop running scans in real-time
 
 ## Quick Start
 
@@ -50,9 +52,10 @@ python start.py
 1. Creates virtual environment (`.venv/`)
 2. Installs Python dependencies
 3. Copies `.env.example` → `.env` and generates a secure `SECRET_KEY`
-4. Installs npm packages and builds Tailwind CSS
-5. Creates required data directories
-6. Starts the Flask server at `http://localhost:5000`
+4. Interactively prompts for Supabase and Groq credentials (or skip to edit `.env` later)
+5. Installs npm packages and builds Tailwind CSS
+6. Creates required data directories
+7. Starts the Flask server at `http://localhost:5000`
 
 On subsequent runs, it detects the setup is complete and starts the server immediately.
 
@@ -116,28 +119,35 @@ The app uses [Groq](https://groq.com/) for AI-powered vulnerability analysis, ex
 1. Go to [console.groq.com](https://console.groq.com/) and sign up (free tier available)
 2. Verify your email
 
-#### Step 2: Generate an API Key
+#### Step 2: Generate API Key(s)
 
 1. In the Groq dashboard, go to **API Keys** (left sidebar)
 2. Click **Create API Key**
 3. Give it a name (e.g., `sudarshan`) and click **Submit**
 4. **Copy the key immediately** -- it won't be shown again
+5. *(Optional)* Create multiple keys for better rate limit distribution
 
 #### Step 3: Add to `.env`
 
-Add this line to your `.env` file:
+For a single key:
 ```env
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-That's it. The app will automatically detect the key and enable AI features on the next run. The free tier gives you generous rate limits for testing.
+For multiple keys (round-robin rotation with automatic failover):
+```env
+GROQ_API_KEYS=gsk_key1,gsk_key2,gsk_key3
+```
+
+That's it. The app will automatically detect the key(s) and enable AI features on the next run. The free tier gives you generous rate limits for testing — multiple keys spread the load further.
 
 ### Other Commands
 
 ```bash
-python start.py --check    # Show setup status
-python start.py --setup    # Force re-run setup
-python start.py --run      # Skip setup, just run
+python start.py --check       # Show setup status
+python start.py --setup       # Force re-run setup
+python start.py --run         # Skip setup, just run
+python start.py --setup-guide # Show Supabase + Groq setup instructions
 ```
 
 ## Architecture
@@ -156,7 +166,8 @@ python start.py --run      # Skip setup, just run
 │  (Threading/    │  (Groq LLM + Porto-  │  (scikit-learn         │
 │   Celery)       │   Swigger KB)        │   ensemble)            │
 ├─────────────────┴──────────────────────┴────────────────────────┤
-│              15 Vulnerability Scanners + Crawler                 │
+│              22 Vulnerability Scanners + Crawler                 │
+│         (via centralized Scanner Registry)                       │
 ├─────────────────┬──────────────────────┬────────────────────────┤
 │  PostgreSQL     │      SQLite          │      Redis             │
 │  (Supabase)     │   (fallback)         │   (optional)           │
@@ -167,8 +178,11 @@ python start.py --run      # Skip setup, just run
 
 - **Database Fallback:** App probes PostgreSQL on startup; if unreachable, falls back to SQLite automatically. No code changes needed.
 - **Graceful AI Degradation:** All AI/LLM features are optional. Without a Groq API key, the app works normally — AI-generated summaries are replaced with template-based fallbacks.
+- **Multi-Key LLM Rotation:** The `LLMClient` supports multiple Groq API keys with round-robin rotation. If a key is rate-limited (429), it automatically fails over to the next key.
 - **Pre-built CSS:** Tailwind CSS is compiled at build time (30KB minified), not loaded from CDN. This improves performance, works offline, and removes the CDN dependency.
 - **Session-Based Auth:** Supabase handles identity (email/OAuth), but Flask manages sessions server-side (8-hour expiry). This avoids token refresh complexity on every request.
+- **Scanner Registry:** All scanner classes are registered in `app/scanner/registry.py`, eliminating duplication between `scan_manager.py` and `tasks.py`.
+- **Plan-Based Limits:** Resource quotas (scans/month, concurrent scans, team size) are enforced per plan tier (free/pro/enterprise) defined in `Config.PLAN_LIMITS`.
 
 ## Scanners
 
@@ -187,8 +201,15 @@ python start.py --run      # Skip setup, just run
 | **Open Redirect** | Parameter-based, path-based, encoding bypass, protocol-relative | 15+ payloads |
 | **SSTI** | Jinja2, Twig, Freemarker, Velocity, Pebble detection | Template probes |
 | **IDOR** | Sequential ID, UUID manipulation, parameter tampering | Access control tests |
+| **Directory Listing** | Common directory enumeration, SPA-aware canary detection | Path probes |
 | **Broken Auth** | Default credentials, session fixation, username enumeration | Credential lists |
 | **JWT Attacks** | Algorithm confusion (none/HS256), key brute-force, claim tampering | Token manipulation |
+| **NoSQL Injection** | MongoDB operator ($gt/$ne/$regex), authentication bypass, JS injection, blind boolean | Operator + JS payloads |
+| **File Upload** | Dangerous extensions, MIME-type bypass, double extension, null byte bypass | Extension + MIME tests |
+| **Host Header Attacks** | Host injection, X-Forwarded-Host, port injection, password reset poisoning | Header injection |
+| **Information Disclosure** | .git/.env exposure, stack traces, debug pages, backup files, API docs | 30+ sensitive paths |
+| **Prototype Pollution** | `__proto__`, `constructor.prototype`, JSON body, query param, form POST | Canary-based detection |
+| **Insecure Deserialization** | Java/PHP/Python serialized cookies, .NET ViewState, parameter/form injection | Framework-specific probes |
 
 ## API
 
@@ -207,11 +228,15 @@ curl http://localhost:5000/api/v2/scans \
 curl -X POST http://localhost:5000/api/v2/scans \
   -b cookies.txt \
   -H "Content-Type: application/json" \
-  -d '{"target_url": "https://example.com", "scan_type": "full"}'
+  -d '{"target_url": "https://example.com", "scan_type": "full", "authorized": true}'
 
 # Get scan results
-curl http://localhost:5000/api/v2/scans/1/vulnerabilities \
+curl http://localhost:5000/api/v2/scans/1/results \
   -b cookies.txt
+
+# Download PDF report
+curl http://localhost:5000/api/v2/scans/1/report/pdf \
+  -b cookies.txt -o report.pdf
 ```
 
 ### Endpoints
@@ -248,10 +273,12 @@ curl http://localhost:5000/api/v2/scans/1/vulnerabilities \
 | `DATABASE_URL` | No | SQLite | PostgreSQL connection URI |
 | `REDIS_URL` | No | — | Redis URI for Celery & SSE pub/sub |
 | `GROQ_API_KEY` | No | — | Groq API key for AI features |
+| `GROQ_API_KEYS` | No | — | Comma-separated Groq keys for rotation |
 | `GROQ_MODEL` | No | `llama-3.3-70b-versatile` | LLM model to use |
 | `PORT` | No | `5000` | Server port |
 | `FLASK_DEBUG` | No | `1` | Debug mode (disable in production) |
 | `ALLOW_LOCAL_TARGETS` | No | `false` | Allow scanning localhost/private IPs |
+| `ALLOW_INSECURE_TARGETS` | No | `false` | Skip TLS verification for local testing |
 
 *Required for user authentication. Without these, the app runs but login/register pages won't function.
 
@@ -289,12 +316,12 @@ Without Redis/Celery, scans run in background threads (works fine for single-use
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|-----------:|
 | Backend | Python 3.12+, Flask 3.0, SQLAlchemy |
 | Frontend | Jinja2, Tailwind CSS 3 (pre-built), vanilla JS |
 | Database | PostgreSQL (Supabase) / SQLite fallback |
 | Auth | Supabase Auth (GoTrue) + Flask sessions |
-| AI/LLM | Groq API (Llama 3.3 70B Versatile) |
+| AI/LLM | Groq API (Llama 3.3 70B) with multi-key rotation |
 | ML | scikit-learn (Random Forest + Gradient Boosting) |
 | Task Queue | Celery + Redis (optional) |
 | Reports | fpdf2 (PDF generation) |

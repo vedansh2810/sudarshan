@@ -44,24 +44,34 @@ LOGIN_FORM_PATTERNS = [
     re.compile(r'name=["\'](?:username|user|email|login)["\']', re.I),
 ]
 
-# Login success indicators (should NOT appear after successful login)
-LOGIN_FAILURE_PATTERNS = [
-    re.compile(
-        r"(?:invalid|incorrect|wrong|bad)\s+(?:username|password|credentials|login)",
-        re.I,
-    ),
-    re.compile(r"login\s+failed", re.I),
-    re.compile(r"authentication\s+(?:failed|error)", re.I),
-    re.compile(r"(?:access|permission)\s+denied", re.I),
-    re.compile(r"try\s+again", re.I),
+# Login success indicators — specific patterns that strongly indicate a real login
+LOGIN_SUCCESS_PATTERNS = [
+    "logout",
+    "sign out",
+    "log out",
+    "my account",
+    "welcome back",
+    "successfully logged in",
+    "authentication successful",
+    "signed in as",
+    "logged in as",
 ]
 
-# Login success indicators
-LOGIN_SUCCESS_PATTERNS = [
-    re.compile(r"(?:welcome|hello|hi)\s+\w+", re.I),
-    re.compile(r"(?:dashboard|profile|account|home)", re.I),
-    re.compile(r"(?:logout|sign\s*out|log\s*out)", re.I),
-    re.compile(r"(?:successfully|logged\s+in)", re.I),
+# Login failure indicators — if any of these appear, the login definitely failed
+LOGIN_FAILURE_PATTERNS = [
+    "invalid",
+    "incorrect",
+    "failed",
+    "error",
+    "wrong password",
+    "authentication failed",
+    "login failed",
+    "access denied",
+    "unauthorized",
+    "try again",
+    "account not found",
+    "user not found",
+    "bad credentials",
 ]
 
 
@@ -250,18 +260,28 @@ class BrokenAuthScanner(BaseScanner):
             if not resp:
                 continue
 
-            text = resp.text or ""
+            resp_text = (resp.text or "").lower()
 
-            # Check for login failure indicators
-            is_failure = any(p.search(text) for p in LOGIN_FAILURE_PATTERNS)
-            is_success = any(p.search(text) for p in LOGIN_SUCCESS_PATTERNS)
+            # Check for explicit failure indicators first
+            has_failure = any(
+                pattern in resp_text
+                for pattern in LOGIN_FAILURE_PATTERNS
+            )
+            if has_failure:
+                continue
 
-            # Also check: redirect to dashboard, status 302 to non-login page
-            redirected_away = resp.status_code == 200 and not any(
-                p.search(text) for p in LOGIN_FORM_PATTERNS
+            # Check for success indicators
+            is_success = any(
+                pattern in resp_text
+                for pattern in LOGIN_SUCCESS_PATTERNS
             )
 
-            if (is_success or redirected_away) and not is_failure:
+            # Also require a session cookie as confirmation
+            has_session_cookie = bool(resp.cookies)
+            if not (is_success and has_session_cookie):
+                continue
+
+            if True:  # login confirmed
                 self.findings.append(
                     {
                         "vuln_type": "broken_auth",
@@ -282,7 +302,7 @@ class BrokenAuthScanner(BaseScanner):
                         "parameter": f'{login_info["username_field"]}/{login_info["password_field"]}',
                         "payload": f"{username}:{password}",
                         "request_data": f'POST {login_info["action"]}',
-                        "response_data": text[:300],
+                        "response_data": resp_text[:300],
                         "remediation": (
                             "1. Force password change on first login.\n"
                             "2. Remove all default credentials before deployment.\n"
@@ -296,77 +316,16 @@ class BrokenAuthScanner(BaseScanner):
     # ── Attack: Session fixation ─────────────────────────────────────
 
     def _test_session_fixation(self, target_url, login_info):
-        """Check if session ID changes after authentication."""
-        # Get pre-login session cookies
-        resp_before = self._request("GET", login_info["url"])
-        if not resp_before:
-            return
+        """Check if session ID changes after authentication.
 
-        pre_cookies = dict(resp_before.cookies)
-
-        # Attempt a login (with intentionally wrong creds to just observe session behavior)
-        post_data = dict(login_info["hidden_fields"])
-        post_data[login_info["username_field"]] = "session_fixation_test"
-        post_data[login_info["password_field"]] = "session_fixation_test"
-
-        resp_after = self._request(
-            login_info["method"],
-            login_info["action"],
-            data=post_data,
-            allow_redirects=True,
-        )
-
-        if not resp_after:
-            return
-
-        post_cookies = dict(resp_after.cookies)
-
-        # Check if session-related cookies changed
-        session_cookies = [
-            name
-            for name in pre_cookies
-            if any(
-                s in name.lower()
-                for s in ["session", "sess", "sid", "phpsessid", "jsessionid"]
-            )
-        ]
-
-        for cookie_name in session_cookies:
-            pre_val = pre_cookies.get(cookie_name)
-            post_val = post_cookies.get(cookie_name)
-
-            if pre_val and post_val and pre_val == post_val:
-                self.findings.append(
-                    {
-                        "vuln_type": "broken_auth",
-                        "name": "Session Fixation Vulnerability",
-                        "description": (
-                            f'The session cookie "{cookie_name}" does not change after '
-                            f"authentication attempt. This suggests the application is "
-                            f"vulnerable to session fixation attacks."
-                        ),
-                        "impact": (
-                            "An attacker can set a known session ID in the victim's browser "
-                            "before login. After the victim authenticates, the attacker can "
-                            "hijack the session using the known ID."
-                        ),
-                        "severity": "high",
-                        "cvss_score": 7.5,
-                        "owasp_category": "A07",
-                        "affected_url": login_info["url"],
-                        "parameter": cookie_name,
-                        "payload": f"Pre-login: {pre_val[:30]}... == Post-login: {post_val[:30]}...",
-                        "request_data": f'Login form at {login_info["action"]}',
-                        "response_data": f"Session cookie unchanged: {cookie_name}",
-                        "remediation": (
-                            "1. Regenerate session ID after every authentication event.\n"
-                            "2. Invalidate old session IDs immediately.\n"
-                            "3. Use secure session management frameworks.\n"
-                            "4. Set session cookies with HttpOnly, Secure, SameSite flags."
-                        ),
-                    }
-                )
-                return
+        DISABLED: This test previously used intentionally wrong credentials
+        ("session_fixation_test") and then checked whether the session cookie
+        changed. Since a failed login does NOT trigger session regeneration
+        on any reasonable server, the cookie was always unchanged, producing
+        a false positive on every target. A valid session-fixation test
+        requires working credentials, which we don't reliably have.
+        """
+        pass
 
     # ── Attack: Account lockout ──────────────────────────────────────
 

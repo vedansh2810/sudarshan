@@ -45,6 +45,8 @@ class RateLimiter:
     def acquire(self, estimated_tokens=0):
         """Block until a request slot is available, respecting token budget."""
         self._semaphore.acquire()
+
+        sleep_time = 0
         with self._lock:
             now = time.time()
             # Prune expired entries
@@ -54,27 +56,32 @@ class RateLimiter:
             # Check call count limit
             if len(self._calls) >= self.max_calls:
                 sleep_time = self.period - (now - self._calls[0])
-                if sleep_time > 0:
-                    logger.debug(f"Rate limit (RPM): sleeping {sleep_time:.1f}s")
-                    time.sleep(sleep_time)
-                now = time.time()
-                self._calls = [t for t in self._calls if now - t < self.period]
-                self._tokens = [
-                    (t, c) for t, c in self._tokens if now - t < self.period
-                ]
 
-            # Check token budget
+        # Sleep OUTSIDE the lock to avoid blocking other threads
+        if sleep_time > 0:
+            logger.debug(f"Rate limit (RPM): sleeping {sleep_time:.1f}s")
+            time.sleep(sleep_time)
+
+        # Check token budget
+        token_sleep = 0
+        with self._lock:
+            now = time.time()
+            self._calls = [t for t in self._calls if now - t < self.period]
+            self._tokens = [(t, c) for t, c in self._tokens if now - t < self.period]
+
             if estimated_tokens > 0:
                 used_tokens = sum(c for _, c in self._tokens)
                 if used_tokens + estimated_tokens > self.max_tokens and self._tokens:
-                    sleep_time = self.period - (now - self._tokens[0][0])
-                    if sleep_time > 0:
-                        logger.debug(
-                            f"Rate limit (tokens): sleeping {min(sleep_time, 15):.1f}s "
-                            f"({used_tokens}+{estimated_tokens} > {self.max_tokens})"
-                        )
-                        time.sleep(min(sleep_time, 15))
+                    token_sleep = self.period - (now - self._tokens[0][0])
 
+        if token_sleep > 0:
+            logger.debug(
+                f"Rate limit (tokens): sleeping {min(token_sleep, 15):.1f}s"
+            )
+            time.sleep(min(token_sleep, 15))
+
+        # Record the call
+        with self._lock:
             self._calls.append(time.time())
             if estimated_tokens > 0:
                 self._tokens.append((time.time(), estimated_tokens))
@@ -188,7 +195,7 @@ class LLMClient:
                 from groq import Groq
                 self._groq_clients[api_key] = Groq(api_key=api_key)
                 # Log with masked key for security
-                masked = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
+                masked = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "***"
                 logger.info(f"Groq client initialized for key {masked} (model: {self.model_name})")
             except Exception as e:
                 logger.error(f"Failed to initialize Groq client: {e}")
@@ -221,49 +228,66 @@ class LLMClient:
             )
         messages.append({"role": "user", "content": prompt})
 
-        # Try each key up to the total number of keys
+        # Try each key up to the total number of keys, with exponential
+        # backoff retries when ALL keys are exhausted (429 on every key).
         last_error = None
-        attempts = len(self._api_keys)
+        num_keys = len(self._api_keys)
+        max_retries = 2  # retry up to 2 times after all keys exhausted
 
-        for attempt in range(attempts):
-            api_key = self._get_next_key()
-            client = self._get_groq_client(api_key)
-            if not client:
-                continue
-
-            self._rate_limiter.acquire(estimated_tokens=estimated_tokens)
-            try:
-                response = client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=0.3,
-                    max_tokens=4096,
-                )
-                return response.choices[0].message.content or ""
-            except Exception as e:
-                self._rate_limiter.release()
-                last_error = e
-                error_str = str(e).lower()
-                # If rate limited, try the next key
-                if "rate_limit" in error_str or "429" in error_str:
-                    masked = api_key[:8] + "..." if len(api_key) > 8 else "***"
-                    logger.warning(
-                        f"Groq key {masked} rate-limited, rotating to next key "
-                        f"(attempt {attempt + 1}/{attempts})"
-                    )
+        for retry_round in range(max_retries + 1):
+            for attempt in range(num_keys):
+                api_key = self._get_next_key()
+                client = self._get_groq_client(api_key)
+                if not client:
                     continue
-                # For other errors, don't retry
-                logger.error(f"Groq API error: {e}")
-                raise
-            finally:
-                try:
-                    self._rate_limiter.release()
-                except ValueError:
-                    pass  # Already released in the except block above
 
-        # All keys exhausted
-        logger.error(f"All {attempts} Groq API keys are rate-limited")
-        raise last_error or RuntimeError("All Groq API keys exhausted")
+                self._rate_limiter.acquire(estimated_tokens=estimated_tokens)
+                released = False
+                try:
+                    response = client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        temperature=0.3,
+                        max_tokens=4096,
+                        timeout=30,  # Bug fix: add 30s timeout
+                    )
+                    return response.choices[0].message.content or ""
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    # If rate limited, try the next key
+                    if "rate_limit" in error_str or "429" in error_str:
+                        masked = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "***"
+                        logger.warning(
+                            f"Groq key {masked} rate-limited, rotating to next key "
+                            f"(attempt {attempt + 1}/{num_keys}, round {retry_round + 1})"
+                        )
+                        continue
+                    # For other errors, don't retry
+                    logger.error(f"Groq API error: {e}")
+                    raise
+                finally:
+                    if not released:
+                        self._rate_limiter.release()
+                        released = True
+
+            # All keys exhausted in this round — backoff and retry
+            if retry_round < max_retries:
+                wait = 2 ** (retry_round + 1)  # 2s, 4s
+                logger.warning(
+                    f"All {num_keys} Groq keys rate-limited — "
+                    f"retrying in {wait}s (retry {retry_round + 1}/{max_retries})"
+                )
+                time.sleep(wait)
+            else:
+                break
+
+        # All retries exhausted
+        logger.error(
+            f"All {num_keys} Groq API keys rate-limited after "
+            f"{max_retries} retries — AI features skipped for this call"
+        )
+        raise last_error or RuntimeError("All Groq API keys exhausted after retries")
 
     def generate(self, prompt, context=None, use_cache=True):
         """Generate text using Groq LLM.

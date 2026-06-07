@@ -10,7 +10,7 @@ Security hardening (v2.1):
 
 import logging
 from datetime import datetime, timezone
-import requests as http_requests
+import httpx
 from flask import (
     Blueprint,
     render_template,
@@ -50,10 +50,10 @@ def _verify_supabase_token(access_token):
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
 
     # Call Supabase Auth API to verify the token and get user info
-    resp = http_requests.get(
+    resp = httpx.get(
         f"{supabase_url}/auth/v1/user",
         headers={"Authorization": f"Bearer {access_token}", "apikey": service_key},
-        timeout=10,
+        timeout=10.0,
     )
 
     if resp.status_code == 200:

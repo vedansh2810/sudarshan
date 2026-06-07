@@ -1,21 +1,32 @@
 import re
 import json
 import logging
-import requests
+import httpx
 import time
-import urllib3
-
-# Suppress InsecureRequestWarning for self-signed cert scanning
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
 
 class BaseScanner:
     def __init__(self, session=None, timeout=8, delay=0.05):
-        self.session = session or requests.Session()
-        self.session.headers.update({"User-Agent": "Sudarshan-Scanner/1.0"})
-        self.session.verify = False  # Allow scanning HTTPS with self-signed certs
+        # Flask app reference — set by ScanManager so background threads
+        # can push app_context() for DB operations (ML data recording).
+        self._flask_app = None
+
+        if session is not None:
+            # Reuse an existing httpx.Client (e.g., from crawler with auth cookies)
+            self.session = session
+        else:
+            self.session = httpx.Client(
+                verify=False,
+                timeout=httpx.Timeout(timeout, connect=5.0),
+                follow_redirects=True,
+                limits=httpx.Limits(
+                    max_connections=20,
+                    max_keepalive_connections=10,
+                ),
+                headers={"User-Agent": "Sudarshan-Scanner/1.0"},
+            )
         self.timeout = timeout
         self.delay = delay
         self.findings = []
@@ -88,7 +99,7 @@ class BaseScanner:
         raise NotImplementedError
 
     def _request(self, method, url, **kwargs):
-        """Send HTTP request with rate-limiting between consecutive requests."""
+        """Send HTTP request with rate-limiting and automatic 429 backoff."""
         try:
             # Rate-limit: only sleep if we're sending requests too fast
             elapsed_since_last = time.time() - self._last_request_time
@@ -96,14 +107,40 @@ class BaseScanner:
                 time.sleep(self.delay - elapsed_since_last)
 
             kwargs.setdefault("timeout", self.timeout)
-            kwargs.setdefault("allow_redirects", True)
-            kwargs.setdefault("verify", False)
+            # httpx uses follow_redirects instead of allow_redirects
+            if "allow_redirects" in kwargs:
+                kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
+            kwargs.setdefault("follow_redirects", True)
+            # httpx Client already has verify=False set; remove if passed
+            kwargs.pop("verify", None)
             start = time.time()
             response = self.session.request(method, url, **kwargs)
             self._last_request_time = time.time()
             response.elapsed_time = time.time() - start
+
+            # ── Rate-limit detection (429 Too Many Requests) ─────────
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 5))
+                retry_after = min(retry_after, 30)  # Cap at 30 seconds
+                logger.warning(
+                    f"Rate limited on {url} — backing off {retry_after}s"
+                )
+                time.sleep(retry_after)
+                # Double the delay for subsequent requests (exponential backoff)
+                self.delay = min(self.delay * 2, 5.0)
+                # Retry once after backoff
+                response = self.session.request(method, url, **kwargs)
+                self._last_request_time = time.time()
+                response.elapsed_time = time.time() - start
+
             return response
-        except Exception:
+        except httpx.TimeoutException:
+            logger.warning(
+                f"Request to {url} timed out after {kwargs.get('timeout', self.timeout)}s"
+            )
+            return None
+        except Exception as e:
+            logger.debug(f"Request to {url} failed: {e}")
             return None
 
     def _timed_request(self, method, url, **kwargs):
@@ -117,14 +154,16 @@ class BaseScanner:
                 time.sleep(self.delay - elapsed_since_last)
 
             kwargs.setdefault("timeout", max(self.timeout, 15))
-            kwargs.setdefault("allow_redirects", True)
-            kwargs.setdefault("verify", False)
+            if "allow_redirects" in kwargs:
+                kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
+            kwargs.setdefault("follow_redirects", True)
+            kwargs.pop("verify", None)
             start = time.time()
             response = self.session.request(method, url, **kwargs)
             elapsed = time.time() - start
             self._last_request_time = time.time()
             return response, elapsed
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             return None, time.time() - start
         except Exception:
             return None, 0
@@ -441,48 +480,57 @@ class BaseScanner:
             )
             sanitized_text = self._sanitize_response_data(raw_response_text)
 
-            ScanAttempt.create(
-                scan_id=self.current_scan_id,
-                request_data={
-                    "url": url,
-                    "parameter": param,
-                    "original_value": "",
-                    "payload": payload or "",
-                    "method": method,
-                    "context": context,
-                },
-                response_data={
-                    "status_code": (
-                        getattr(test_response, "status_code", None)
-                        if test_response
-                        else None
-                    ),
-                    "content_length": (
-                        len(getattr(test_response, "text", "") or "")
-                        if test_response
-                        else None
-                    ),
-                    "response_time": (
-                        getattr(test_response, "elapsed_time", None)
-                        if test_response
-                        else None
-                    ),
-                    "error_patterns": error_patterns,
-                    "reflection_detected": bool(
-                        payload
-                        and test_response
-                        and payload in (getattr(test_response, "text", "") or "")
-                    ),
-                    "body_preview": sanitized_text,
-                },
-                detection_result={
-                    "vulnerability_found": vuln_found,
-                    "vulnerability_type": vuln_type,
-                    "confidence": confidence,
-                    "technique": technique,
-                    "severity": severity,
-                },
-                features=features,
-            )
+            def _do_create():
+                ScanAttempt.create(
+                    scan_id=self.current_scan_id,
+                    request_data={
+                        "url": url,
+                        "parameter": param,
+                        "original_value": "",
+                        "payload": payload or "",
+                        "method": method,
+                        "context": context,
+                    },
+                    response_data={
+                        "status_code": (
+                            getattr(test_response, "status_code", None)
+                            if test_response
+                            else None
+                        ),
+                        "content_length": (
+                            len(getattr(test_response, "text", "") or "")
+                            if test_response
+                            else None
+                        ),
+                        "response_time": (
+                            getattr(test_response, "elapsed_time", None)
+                            if test_response
+                            else None
+                        ),
+                        "error_patterns": error_patterns,
+                        "reflection_detected": bool(
+                            payload
+                            and test_response
+                            and payload in (getattr(test_response, "text", "") or "")
+                        ),
+                        "body_preview": sanitized_text,
+                    },
+                    detection_result={
+                        "vulnerability_found": vuln_found,
+                        "vulnerability_type": vuln_type,
+                        "confidence": confidence,
+                        "technique": technique,
+                        "severity": severity,
+                    },
+                    features=features,
+                )
+
+            # Push Flask app context for background threads (ThreadPoolExecutor)
+            # that don't inherit the request/app context from the parent thread.
+            if self._flask_app:
+                with self._flask_app.app_context():
+                    _do_create()
+            else:
+                _do_create()
         except Exception as e:
             logger.debug(f"ML data recording failed (non-fatal): {e}")

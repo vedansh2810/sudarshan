@@ -26,7 +26,7 @@ class ScanModel(db.Model):
     __tablename__ = "scans"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     org_id = db.Column(
         db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True
     )
@@ -34,7 +34,7 @@ class ScanModel(db.Model):
     scan_mode = db.Column(db.String(20), default="active")
     scan_speed = db.Column(db.String(20), default="balanced")
     crawl_depth = db.Column(db.Integer, default=3)
-    status = db.Column(db.String(20), default="pending")
+    status = db.Column(db.String(20), default="pending", index=True)
     score = db.Column(db.String(2), default=None)
     total_urls = db.Column(db.Integer, default=0)
     tested_urls = db.Column(db.Integer, default=0)
@@ -44,8 +44,13 @@ class ScanModel(db.Model):
     medium_count = db.Column(db.Integer, default=0)
     low_count = db.Column(db.Integer, default=0)
     duration = db.Column(db.Integer, default=0)
-    started_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    started_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     completed_at = db.Column(db.DateTime, default=None)
+
+    __table_args__ = (
+        db.Index("ix_scans_user_started", "user_id", "started_at"),
+        db.Index("ix_scans_status_started", "status", "started_at"),
+    )
 
     vulnerabilities = db.relationship(
         "VulnerabilityModel",
@@ -65,12 +70,12 @@ class VulnerabilityModel(db.Model):
     __tablename__ = "vulnerabilities"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    scan_id = db.Column(db.Integer, db.ForeignKey("scans.id"), nullable=False)
-    vuln_type = db.Column(db.String(50), nullable=False)
+    scan_id = db.Column(db.Integer, db.ForeignKey("scans.id"), nullable=False, index=True)
+    vuln_type = db.Column(db.String(50), nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     impact = db.Column(db.Text)
-    severity = db.Column(db.String(20), default="medium")
+    severity = db.Column(db.String(20), default="medium", index=True)
     cvss_score = db.Column(db.Float, default=0.0)
     owasp_category = db.Column(db.String(50))
     affected_url = db.Column(db.Text)
@@ -85,12 +90,16 @@ class VulnerabilityModel(db.Model):
     fp_confidence = db.Column(db.Float, nullable=True)
     found_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        db.Index("ix_vulns_scan_severity", "scan_id", "severity"),
+    )
+
 
 class CrawledUrlModel(db.Model):
     __tablename__ = "crawled_urls"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    scan_id = db.Column(db.Integer, db.ForeignKey("scans.id"), nullable=False)
+    scan_id = db.Column(db.Integer, db.ForeignKey("scans.id"), nullable=False, index=True)
     url = db.Column(db.Text, nullable=False)
     status_code = db.Column(db.Integer)
     forms_found = db.Column(db.Integer, default=0)
@@ -102,58 +111,30 @@ class ScanLogModel(db.Model):
     __tablename__ = "scan_logs"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    scan_id = db.Column(db.Integer, db.ForeignKey("scans.id"), nullable=False)
+    scan_id = db.Column(db.Integer, db.ForeignKey("scans.id"), nullable=False, index=True)
     log_type = db.Column(db.String(20), default="info")
     message = db.Column(db.Text, nullable=False)
     logged_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        db.Index("ix_logs_scan_logged", "scan_id", "logged_at"),
+    )
+
 
 def init_db():
-    """Create all tables and apply column migrations for existing tables."""
+    """Create all tables.
+
+    All columns (including org_id, AI columns, etc.) are now declared in the
+    ORM models above, so db.create_all() creates them correctly on fresh
+    databases.  For existing databases that need schema updates, use
+    Flask-Migrate:
+
+        flask db migrate -m "description"
+        flask db upgrade
+
+    The manual ALTER TABLE statements that used to live here have been
+    removed — they were fragile (no idempotency guarantees across DB engines)
+    and duplicated what Flask-Migrate already handles.
+    """
     db.create_all()
-
-    # Apply column migrations for existing tables that need new columns
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(db.engine)
-
-    # Migration: add org_id to scans table (Phase 1.4)
-    if "scans" in inspector.get_table_names():
-        existing_cols = {c["name"] for c in inspector.get_columns("scans")}
-        if "org_id" not in existing_cols:
-            with db.engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE scans ADD COLUMN org_id INTEGER REFERENCES organizations(id)"
-                    )
-                )
-
-    # Migration: add AI columns to vulnerabilities table
-    if "vulnerabilities" in inspector.get_table_names():
-        existing_cols = {c["name"] for c in inspector.get_columns("vulnerabilities")}
-        new_cols = {
-            "ai_analysis": "TEXT",
-            "ai_narrative": "TEXT",
-            "likely_false_positive": "BOOLEAN DEFAULT FALSE",
-            "fp_confidence": "FLOAT",
-        }
-        for col_name, col_type in new_cols.items():
-            if col_name not in existing_cols:
-                with db.engine.begin() as conn:
-                    conn.execute(
-                        text(
-                            f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_type}"
-                        )
-                    )
-
-    # Migration: add org_id to api_keys table
-    if "api_keys" in inspector.get_table_names():
-        existing_cols = {c["name"] for c in inspector.get_columns("api_keys")}
-        if "org_id" not in existing_cols:
-            with db.engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE api_keys ADD COLUMN org_id INTEGER REFERENCES organizations(id)"
-                    )
-                )
 

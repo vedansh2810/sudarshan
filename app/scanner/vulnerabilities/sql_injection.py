@@ -590,9 +590,12 @@ class SQLInjectionScanner(BaseScanner):
     def scan(self, target_url, injectable_points):
         self._ensure_smart_payloads()
         self.findings = []
+        MAX_FINDINGS_PER_SCAN = 5  # Stop after 5 SQLi findings per scan
         seen = set()
 
         for point in injectable_points:
+            if len(self.findings) >= MAX_FINDINGS_PER_SCAN:
+                break
             # ── Test forms ──
             if isinstance(point, dict) and point.get("type") == "form":
                 form_results = self._test_form(point)

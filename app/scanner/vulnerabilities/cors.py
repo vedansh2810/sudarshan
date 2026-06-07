@@ -30,6 +30,16 @@ class CORSScanner(BaseScanner):
         ("https://localhost", "localhost origin"),
     ]
 
+    # Bypass patterns — {domain} and {scheme} are replaced at runtime
+    BYPASS_TEMPLATES = [
+        ("{scheme}://{domain}.evil.com", "subdomain prefix bypass"),
+        ("{scheme}://evil.com.{domain}", "subdomain suffix bypass"),
+        ("{scheme}://evil{domain}", "no-dot prefix bypass"),
+        ("{scheme}://{domain}%60.evil.com", "backtick encoding bypass"),
+        ("{scheme}://{domain}%2F.evil.com", "encoded-slash bypass"),
+    ]
+
+
     def _test_cors(self, url, test_origin, origin_desc):
         """Send a request with a specific Origin header and analyze ACAO/ACAC.
 
@@ -165,6 +175,43 @@ class CORSScanner(BaseScanner):
 
     # ── Main scan ────────────────────────────────────────────────────
 
+    def _test_origin_bypasses(self, url):
+        """Test CORS origin validation bypass techniques."""
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc
+        scheme = parsed.scheme
+
+        for template, technique in self.BYPASS_TEMPLATES:
+            test_origin = template.format(domain=domain, scheme=scheme)
+            try:
+                response = self._request("GET", url, headers={"Origin": test_origin})
+                if not response:
+                    continue
+
+                acao = response.headers.get("Access-Control-Allow-Origin", "")
+                acac = response.headers.get("Access-Control-Allow-Credentials", "").lower()
+
+                if acao and (acao == test_origin or acao == "*"):
+                    if acac == "true" or acao == test_origin:
+                        return self._build_finding(
+                            url,
+                            test_origin,
+                            acao,
+                            acac,
+                            title=f"CORS Origin Bypass ({technique})",
+                            description=(
+                                f"The server accepted a crafted origin ({test_origin}) "
+                                f"using {technique}. This indicates the origin validation "
+                                "uses pattern matching that can be bypassed."
+                            ),
+                            severity="high",
+                            cvss=7.5,
+                        )
+            except Exception:
+                continue
+        return None
+
     def scan(self, target_url, injectable_points):
         """Scan for CORS misconfiguration on the target URL.
 
@@ -181,4 +228,11 @@ class CORSScanner(BaseScanner):
                 if "Reflection" in result["name"]:
                     break
 
+        # Test origin validation bypass techniques
+        if not any("Reflection" in f["name"] for f in self.findings):
+            bypass_result = self._test_origin_bypasses(target_url)
+            if bypass_result:
+                self.findings.append(bypass_result)
+
         return self.findings
+

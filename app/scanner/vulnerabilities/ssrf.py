@@ -279,7 +279,7 @@ class SSRFScanner(BaseScanner):
 
     # ── Core testing ─────────────────────────────────────────────────
 
-    def _test_ssrf_on_param(self, url, param_name, payload_set):
+    def _test_ssrf_on_param(self, url, param_name, payload_set, baseline_body):
         """Test SSRF by injecting payload into a URL query parameter.
 
         Returns a vulnerability finding dict or None.
@@ -291,7 +291,7 @@ class SSRFScanner(BaseScanner):
             # Inject payload into the target parameter
             test_params = dict(params)
             test_params[param_name] = [payload_set["payload"]]
-            query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+            query = urlencode(test_params, doseq=True)
             test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
 
             # Merge any required headers
@@ -302,14 +302,14 @@ class SSRFScanner(BaseScanner):
                 return None
 
             return self._check_response(
-                response, url, param_name, payload_set, test_url, "GET"
+                response, url, param_name, payload_set, test_url, "GET", baseline_body
             )
 
         except Exception as e:
             logger.debug(f"SSRF param test error: {e}")
             return None
 
-    def _test_ssrf_on_form(self, form, payload_set):
+    def _test_ssrf_on_form(self, form, payload_set, baseline_body):
         """Test SSRF by injecting payload into form fields.
 
         Returns a vulnerability finding dict or None.
@@ -343,7 +343,8 @@ class SSRFScanner(BaseScanner):
                     continue
 
                 result = self._check_response(
-                    response, url, target_input["name"], payload_set, url, method
+                    response, url, target_input["name"], payload_set, url, method,
+                    baseline_body
                 )
                 if result:
                     return result
@@ -352,12 +353,27 @@ class SSRFScanner(BaseScanner):
             logger.debug(f"SSRF form test error: {e}")
         return None
 
-    def _check_response(self, response, url, param_name, payload_set, test_url, method):
-        """Check if SSRF indicators are present in the response."""
+    def _check_response(self, response, url, param_name, payload_set, test_url, method,
+                         baseline_body=""):
+        """Check if SSRF indicators are present in the response but NOT in baseline."""
         body = response.text.lower()
-        detected = [ind for ind in payload_set["indicators"] if ind.lower() in body]
+        baseline_lower = baseline_body.lower() if baseline_body else ""
+
+        # Only count indicators that are NEW (not present in the baseline)
+        detected = [
+            ind for ind in payload_set["indicators"]
+            if ind.lower() in body and ind.lower() not in baseline_lower
+        ]
 
         if not detected:
+            return None
+
+        # For generic payloads (localhost, internal), require 2+ unique indicators
+        # to reduce false positives from normal page content
+        if payload_set["name"] in (
+            "localhost-access", "localhost-ipv6", "internal-network-192",
+            "portswigger-ssrf"
+        ) and len(detected) < 2:
             return None
 
         # Build evidence snippet
@@ -439,9 +455,14 @@ class SSRFScanner(BaseScanner):
         """Scan for SSRF vulnerabilities across all injectable points.
 
         Only tests parameters whose names suggest they accept URLs.
+        Fetches a baseline response first to avoid false positives.
         """
         self.findings = []
         seen = set()
+
+        # Fetch baseline response to compare against
+        baseline_resp = self._request("GET", target_url)
+        baseline_body = baseline_resp.text if baseline_resp else ""
 
         for point in injectable_points:
             # Test forms
@@ -452,7 +473,7 @@ class SSRFScanner(BaseScanner):
                 seen.add(form_key)
 
                 for payload_set in self._get_ssrf_payloads():
-                    result = self._test_ssrf_on_form(point, payload_set)
+                    result = self._test_ssrf_on_form(point, payload_set, baseline_body)
                     if result:
                         self.findings.append(result)
                         break
@@ -469,7 +490,9 @@ class SSRFScanner(BaseScanner):
                 seen.add(key)
 
                 for payload_set in self._get_ssrf_payloads():
-                    result = self._test_ssrf_on_param(url, point["name"], payload_set)
+                    result = self._test_ssrf_on_param(
+                        url, point["name"], payload_set, baseline_body
+                    )
                     if result:
                         self.findings.append(result)
                         break

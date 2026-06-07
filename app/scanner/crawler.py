@@ -1,4 +1,5 @@
-import requests
+from collections import deque
+import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlencode, parse_qs, urlunparse
 import re
@@ -45,14 +46,9 @@ class Crawler:
         self.stopped = False  # Stop-signal support
 
         # Session management — reuse an authenticated session if provided
-        self.session = session or requests.Session()
-        if not session:
-            self.session.headers.update(
-                {
-                    "User-Agent": "Sudarshan-Scanner/1.0 (Security Research)",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                }
-            )
+        if session:
+            self.session = session
+        else:
             try:
                 allow_insecure = bool(current_app.config.get("ALLOW_INSECURE_TARGETS", False))
             except RuntimeError:
@@ -63,7 +59,16 @@ class Crawler:
                     "yes",
                     "YES",
                 )
-            self.session.verify = not allow_insecure
+            self.session = httpx.Client(
+                verify=not allow_insecure,
+                timeout=httpx.Timeout(self.timeout, connect=5.0),
+                follow_redirects=True,
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+                headers={
+                    "User-Agent": "Sudarshan-Scanner/1.0 (Security Research)",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                },
+            )
 
         self.disallowed_paths = []
         # Skip robots.txt when an authenticated session is provided
@@ -75,20 +80,39 @@ class Crawler:
 
     # ── URL Normalization ────────────────────────────────────────────
 
-    @staticmethod
-    def _normalize_url(url):
+    # Query parameters that are dynamic/tracking and should be stripped
+    # during deduplication to avoid infinite crawl loops.
+    _DYNAMIC_PARAMS = frozenset({
+        # Analytics / tracking
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "fbclid", "gclid", "gclsrc", "dclid", "msclkid",
+        # Cache busters / timestamps
+        "t", "_t", "ts", "timestamp", "_", "__", "cb", "cachebuster",
+        "nocache", "rand", "random", "v", "_v",
+        # Session / referrer
+        "sid", "session_id", "sessionid", "jsessionid", "phpsessid",
+        "ref", "referer", "referrer", "source",
+        # Pagination (keep page but strip tracking)
+        "utm_id", "mc_cid", "mc_eid",
+    })
+
+    @classmethod
+    def _normalize_url(cls, url):
         """Normalize a URL for consistent deduplication.
-        Strips fragments, trailing slashes on paths, empty query strings,
-        and sorts query parameters."""
+        Strips fragments, trailing slashes on paths, known dynamic/tracking
+        query parameters, empty query strings, and sorts remaining parameters."""
         parsed = urlparse(url)
         # Remove fragment
         path = parsed.path.rstrip("/") or "/"
-        # Sort query parameters for consistent comparison
+        # Sort query parameters and strip dynamic/tracking ones
         if parsed.query:
             params = parse_qs(parsed.query, keep_blank_values=True)
-            sorted_query = urlencode(
-                {k: v[0] for k, v in sorted(params.items())}, doseq=False
-            )
+            # Remove known dynamic parameters
+            filtered = {
+                k: v[0] for k, v in sorted(params.items())
+                if k.lower() not in cls._DYNAMIC_PARAMS
+            }
+            sorted_query = urlencode(filtered, doseq=False) if filtered else ""
         else:
             sorted_query = ""
         return urlunparse(
@@ -181,7 +205,7 @@ class Crawler:
                     f"{len(self._robots_discovered_paths)} discovery paths, "
                     f"{len(self._sitemap_urls)} sitemap(s)"
                 )
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             logger.debug(f"Could not fetch robots.txt: {e}")
         except Exception as e:
             logger.warning(f"Error parsing robots.txt: {e}")
@@ -200,7 +224,7 @@ class Crawler:
 
         for sitemap_url in sitemap_locs:
             try:
-                resp = self.session.get(sitemap_url, timeout=self.timeout, verify=self.session.verify)
+                resp = self.session.get(sitemap_url, timeout=self.timeout)
                 if resp.status_code != 200:
                     continue
                 # Extract <loc> tags (works for both sitemap index and url entries)
@@ -247,7 +271,7 @@ class Crawler:
                     logger.warning(
                         f"Authentication may have failed: status {resp.status_code}"
                     )
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             logger.error(f"Authentication failed: {e}")
 
     # ── Domain / Content Checks ──────────────────────────────────────
@@ -293,7 +317,7 @@ class Crawler:
                 return False
 
         try:
-            resp = self.session.head(url, timeout=self.timeout, allow_redirects=True)
+            resp = self.session.head(url, timeout=self.timeout, follow_redirects=True)
             content_type = resp.headers.get("content-type", "")
             # If no content-type or it's HTML, allow through
             if not content_type:
@@ -350,7 +374,7 @@ class Crawler:
                     if self._is_same_domain(js_src):
                         try:
                             js_resp = self.session.get(
-                                js_src, timeout=self.timeout, verify=self.session.verify
+                                js_src, timeout=self.timeout
                             )
                             if js_resp.status_code == 200:
                                 js_text = js_resp.text or ""
@@ -436,7 +460,7 @@ class Crawler:
             try:
                 time.sleep(self.delay)
                 response = self.session.get(
-                    url, timeout=self.timeout, allow_redirects=True
+                    url, timeout=self.timeout
                 )
                 if response.status_code >= 500 and attempt < max_retries:
                     wait = (2**attempt) * 0.5
@@ -446,7 +470,7 @@ class Crawler:
                     time.sleep(wait)
                     continue
                 return response
-            except requests.exceptions.Timeout:
+            except httpx.TimeoutException:
                 if attempt < max_retries:
                     wait = (2**attempt) * 0.5
                     logger.debug(f"Timeout for {url}, retrying in {wait}s")
@@ -456,7 +480,7 @@ class Crawler:
                         f"Timeout for {url} after {max_retries + 1} attempts"
                     )
                     return None
-            except requests.exceptions.ConnectionError as e:
+            except httpx.ConnectError as e:
                 if attempt < max_retries:
                     wait = (2**attempt) * 0.5
                     time.sleep(wait)
@@ -548,7 +572,7 @@ class Crawler:
         Returns:
             Tuple of (discovered_urls, injectable_points).
         """
-        queue = [(self.target_url, 0)]
+        queue = deque([(self.target_url, 0)])
 
         # Seed queue with sitemap.xml URLs
         try:
@@ -570,6 +594,7 @@ class Crawler:
             except Exception:
                 pass
 
+        _db_batch = []  # Buffer for batch DB writes
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             while queue and not self.stopped:
                 # Check URL limit
@@ -579,7 +604,7 @@ class Crawler:
 
                 # Submit a batch of URLs from the queue
                 batch_size = min(len(queue), self.threads)
-                batch = [queue.pop(0) for _ in range(batch_size)]
+                batch = [queue.popleft() for _ in range(batch_size)]
 
                 futures = {}
                 for url, depth in batch:
@@ -598,21 +623,23 @@ class Crawler:
 
                         new_links, url_info, status_code = result
 
-                        # Persist to DB
+                        # Buffer for batch DB persistence
                         if scan_id:
-                            try:
-                                crawled = CrawledUrlModel(
-                                    scan_id=scan_id,
-                                    url=url,
-                                    status_code=status_code,
-                                    forms_found=url_info.get("forms", 0),
-                                    params_found=url_info.get("params", 0),
-                                )
-                                db.session.add(crawled)
-                                db.session.commit()
-                            except Exception as e:
-                                db.session.rollback()
-                                logger.debug(f"DB insert error for crawled URL: {e}")
+                            _db_batch.append(CrawledUrlModel(
+                                scan_id=scan_id,
+                                url=url,
+                                status_code=status_code,
+                                forms_found=url_info.get("forms", 0),
+                                params_found=url_info.get("params", 0),
+                            ))
+                            if len(_db_batch) >= 10:
+                                try:
+                                    db.session.add_all(_db_batch)
+                                    db.session.commit()
+                                except Exception as e:
+                                    db.session.rollback()
+                                    logger.debug(f"DB batch insert error: {e}")
+                                _db_batch.clear()
 
                         # Callback
                         if callback:
@@ -629,6 +656,15 @@ class Crawler:
 
                     except Exception as e:
                         logger.error(f"Error processing future for {url}: {e}")
+
+        # Flush remaining DB batch
+        if scan_id and _db_batch:
+            try:
+                db.session.add_all(_db_batch)
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.debug(f"DB final batch insert error: {e}")
 
         # Deduplicate injectable points
         seen_points = set()

@@ -256,114 +256,123 @@ class XXEScanner(BaseScanner):
 
         return False
 
-    # ── Core testing ─────────────────────────────────────────────────
+    # Content types to test for XXE (some parsers only trigger on specific types)
+    XML_CONTENT_TYPES = [
+        "application/xml",
+        "text/xml",
+        "application/soap+xml",
+    ]
 
     def _test_xxe(self, url, point, payload_set):
-        """Test a single XXE payload against an endpoint.
+        """Test a single XXE payload against an endpoint with multiple content types.
 
-        Sends XML body as POST and checks response for indicators.
+        Tries application/xml, text/xml, and application/soap+xml since
+        some servers only parse XML with specific Content-Type headers.
         Returns a vulnerability finding dict or None.
         """
         try:
-            headers = {
-                "Content-Type": "application/xml",
-                "Accept": "application/xml, text/xml, */*",
-            }
+            for content_type in self.XML_CONTENT_TYPES:
+                headers = {
+                    "Content-Type": content_type,
+                    "Accept": "application/xml, text/xml, */*",
+                }
 
-            response = self._request(
-                "POST",
-                url,
-                data=payload_set["payload"],
-                headers=headers,
-            )
+                response = self._request(
+                    "POST",
+                    url,
+                    data=payload_set["payload"],
+                    headers=headers,
+                )
 
-            if not response:
-                return None
+                if not response:
+                    continue
 
-            body = response.text.lower()
-            detected = [ind for ind in payload_set["indicators"] if ind.lower() in body]
+                body = response.text.lower()
+                detected = [ind for ind in payload_set["indicators"] if ind.lower() in body]
 
-            if not detected:
-                return None
+                if not detected:
+                    continue
 
-            # Build evidence snippet (first 300 chars around first indicator)
-            snippet = ""
-            idx = body.find(detected[0].lower())
-            if idx >= 0:
-                start = max(0, idx - 50)
-                end = min(len(response.text), idx + 250)
-                snippet = response.text[start:end].strip()
+                # Build evidence snippet (first 300 chars around first indicator)
+                snippet = ""
+                idx = body.find(detected[0].lower())
+                if idx >= 0:
+                    start = max(0, idx - 50)
+                    end = min(len(response.text), idx + 250)
+                    snippet = response.text[start:end].strip()
 
-            param_name = ""
-            if isinstance(point, dict):
-                param_name = point.get("name", "xml_body")
-            else:
-                param_name = "xml_body"
+                param_name = ""
+                if isinstance(point, dict):
+                    param_name = point.get("name", "xml_body")
+                else:
+                    param_name = "xml_body"
 
-            # Record ML data
-            self._record_attempt(
-                url=url,
-                param=param_name,
-                payload=payload_set["payload"][:200],
-                baseline_response=None,
-                test_response=response,
-                vuln_found=True,
-                technique=f'xxe-{payload_set["name"]}',
-                vuln_type="xxe",
-                confidence=90,
-                severity=payload_set["severity"],
-                method="POST",
-                context="xml_body",
-            )
+                # Record ML data
+                self._record_attempt(
+                    url=url,
+                    param=param_name,
+                    payload=payload_set["payload"][:200],
+                    baseline_response=None,
+                    test_response=response,
+                    vuln_found=True,
+                    technique=f'xxe-{payload_set["name"]}',
+                    vuln_type="xxe",
+                    confidence=90,
+                    severity=payload_set["severity"],
+                    method="POST",
+                    context="xml_body",
+                )
 
-            finding = {
-                "vuln_type": "xxe",
-                "name": f'XML External Entity (XXE) Injection - {payload_set["name"]}',
-                "description": (
-                    f'{payload_set["description"]} '
-                    "The application processes XML input without disabling "
-                    "external entity resolution, allowing attackers to read "
-                    "files or access internal services."
-                ),
-                "impact": (
-                    "XXE can lead to:\n"
-                    "• File disclosure (configs, source code, credentials)\n"
-                    "• SSRF attacks against internal services\n"
-                    "• Denial of Service via entity expansion\n"
-                    "• Remote Code Execution (in rare cases)"
-                ),
-                "severity": payload_set["severity"],
-                "cvss_score": payload_set["cvss"],
-                "confidence": 90,
-                "owasp_category": "A05",
-                "cwe": "CWE-611",
-                "affected_url": url,
-                "parameter": param_name,
-                "payload": payload_set["payload"],
-                "request_data": (
-                    f"POST {url}\n"
-                    f"Content-Type: application/xml\n\n"
-                    f'{payload_set["payload"][:300]}'
-                ),
-                "response_data": (
-                    f"Status: {response.status_code}\n"
-                    f'Indicators found: {", ".join(detected)}\n'
-                    f"Snippet: {snippet[:200]}"
-                ),
-                "remediation": (
-                    "1. Disable DTDs and external entities in XML parsers:\n"
-                    "   • Python: use defusedxml instead of xml.etree or lxml\n"
-                    "   • Java: XMLInputFactory.setProperty(IS_SUPPORTING_EXTERNAL_ENTITIES, false)\n"
-                    "   • PHP: libxml_disable_entity_loader(true)\n"
-                    "   • .NET: XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit\n"
-                    "2. Use JSON instead of XML where possible\n"
-                    "3. Validate and sanitize XML input against an XSD schema\n"
-                    "4. Keep XML parsers and libraries updated"
-                ),
-            }
-            if "difficulty" in payload_set:
-                finding["difficulty"] = payload_set["difficulty"]
-            return finding
+                finding = {
+                    "vuln_type": "xxe",
+                    "name": f'XML External Entity (XXE) Injection - {payload_set["name"]}',
+                    "description": (
+                        f'{payload_set["description"]} '
+                        "The application processes XML input without disabling "
+                        "external entity resolution, allowing attackers to read "
+                        f"files or access internal services. (Content-Type: {content_type})"
+                    ),
+                    "impact": (
+                        "XXE can lead to:\n"
+                        "• File disclosure (configs, source code, credentials)\n"
+                        "• SSRF attacks against internal services\n"
+                        "• Denial of Service via entity expansion\n"
+                        "• Remote Code Execution (in rare cases)"
+                    ),
+                    "severity": payload_set["severity"],
+                    "cvss_score": payload_set["cvss"],
+                    "confidence": 90,
+                    "owasp_category": "A05",
+                    "cwe": "CWE-611",
+                    "affected_url": url,
+                    "parameter": param_name,
+                    "payload": payload_set["payload"],
+                    "request_data": (
+                        f"POST {url}\n"
+                        f"Content-Type: {content_type}\n\n"
+                        f'{payload_set["payload"][:300]}'
+                    ),
+                    "response_data": (
+                        f"Status: {response.status_code}\n"
+                        f'Indicators found: {", ".join(detected)}\n'
+                        f"Snippet: {snippet[:200]}"
+                    ),
+                    "remediation": (
+                        "1. Disable DTDs and external entities in XML parsers:\n"
+                        "   • Python: use defusedxml instead of xml.etree or lxml\n"
+                        "   • Java: XMLInputFactory.setProperty(IS_SUPPORTING_EXTERNAL_ENTITIES, false)\n"
+                        "   • PHP: libxml_disable_entity_loader(true)\n"
+                        "   • .NET: XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit\n"
+                        "2. Use JSON instead of XML where possible\n"
+                        "3. Validate and sanitize XML input against an XSD schema\n"
+                        "4. Keep XML parsers and libraries updated"
+                    ),
+                }
+                if "difficulty" in payload_set:
+                    finding["difficulty"] = payload_set["difficulty"]
+                return finding
+
+            return None
 
         except Exception as e:
             logger.debug(f"XXE test error: {e}")
@@ -403,21 +412,28 @@ class XXEScanner(BaseScanner):
         """Test a single URL with all XXE payloads.
 
         Performs a lightweight POST probe first — if the endpoint
-        returns 405 (Method Not Allowed), all payloads are skipped.
+        returns 405 (Method Not Allowed) for all XML content types,
+        all payloads are skipped.
         """
         key = url
         if key in seen:
             return
         seen.add(key)
 
-        # Pre-check: does endpoint accept POST with XML content type?
-        probe_resp = self._request(
-            "POST",
-            url,
-            data='<?xml version="1.0"?><probe/>',
-            headers={"Content-Type": "application/xml"},
-        )
-        if probe_resp and probe_resp.status_code == 405:
+        # Pre-check: does endpoint accept POST with any XML content type?
+        accepts_post = False
+        for ct in self.XML_CONTENT_TYPES:
+            probe_resp = self._request(
+                "POST",
+                url,
+                data='<?xml version="1.0"?><probe/>',
+                headers={"Content-Type": ct},
+            )
+            if probe_resp and probe_resp.status_code != 405:
+                accepts_post = True
+                break
+
+        if not accepts_post:
             logger.debug(f"XXE: Skipping {url} — POST not allowed (405)")
             return
 
@@ -426,3 +442,4 @@ class XXEScanner(BaseScanner):
             if result:
                 self.findings.append(result)
                 break  # One finding per endpoint is enough
+

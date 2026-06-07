@@ -62,9 +62,20 @@
     </div>
     <select name="type" onchange="this.form.submit()"
       class="bg-bg-primary border border-slate-700 text-slate-300 text-sm rounded-lg px-3 py-2 font-mono focus:outline-none focus:border-primary">
+      {% set vuln_labels = {
+        'sql_injection': 'SQL Injection', 'xss': 'XSS', 'csrf': 'CSRF',
+        'security_headers': 'Security Headers', 'directory_traversal': 'Directory Traversal',
+        'command_injection': 'Command Injection', 'idor': 'IDOR',
+        'directory_listing': 'Directory Listing', 'xxe': 'XXE', 'ssrf': 'SSRF',
+        'open_redirect': 'Open Redirect', 'cors': 'CORS', 'clickjacking': 'Clickjacking',
+        'ssti': 'SSTI', 'jwt_attacks': 'JWT Attacks', 'broken_auth': 'Broken Auth',
+        'nosql_injection': 'NoSQL Injection', 'file_upload': 'File Upload',
+        'host_header': 'Host Header', 'info_disclosure': 'Info Disclosure',
+        'prototype_pollution': 'Prototype Pollution', 'insecure_deserialization': 'Deserialization'
+      } %}
       <option value="all" {% if type_filter == 'all' %}selected{% endif %}>All Types</option>
       {% for t in all_types %}
-      <option value="{{ t }}" {% if type_filter == t %}selected{% endif %}>{{ t.replace('_', ' ').title() }}</option>
+      <option value="{{ t }}" {% if type_filter == t %}selected{% endif %}>{{ vuln_labels.get(t, t.replace('_', ' ').title()) }}</option>
       {% endfor %}
     </select>
     <span class="text-xs text-slate-500 ml-auto font-mono">{{ vulnerabilities|length }} results</span>

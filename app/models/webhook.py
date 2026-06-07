@@ -6,7 +6,7 @@ Sends HTTP POST to registered URLs when scan events occur.
 import json
 import logging
 import threading
-import requests
+import httpx
 from datetime import datetime, timezone
 from flask import current_app
 from app.models.database import db
@@ -128,14 +128,14 @@ class Webhook(db.Model):
             "data": data,
         }
         try:
-            resp = requests.post(
+            resp = httpx.post(
                 url,
                 json=payload,
                 headers={
                     "Content-Type": "application/json",
                     "User-Agent": "Sudarshan-Webhook/1.0",
                 },
-                timeout=10,
+                timeout=10.0,
             )
             if resp.status_code >= 400:
                 logger.warning(f"Webhook {webhook_id} returned {resp.status_code}")

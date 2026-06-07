@@ -1,6 +1,6 @@
 import re
 import logging
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 from difflib import SequenceMatcher
 from app.scanner.vulnerabilities.base import BaseScanner
 
@@ -110,7 +110,7 @@ class IDORScanner(BaseScanner):
 
                     test_params = dict(params)
                     test_params[param] = [str(test_id)]
-                    query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+                    query = urlencode(test_params, doseq=True)
                     test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
 
                     response = self._request("GET", test_url)

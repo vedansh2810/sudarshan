@@ -2,7 +2,7 @@ import re
 import random
 import string
 import logging
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 from app.scanner.vulnerabilities.base import BaseScanner
 from app.scanner.payload_manager import get_payload_manager
 
@@ -14,13 +14,12 @@ class XSSScanner(BaseScanner):
     unique markers, context-aware payloads, encoding bypass, WAF evasion,
     sanitization detection, and validation scoring."""
 
-    # Unique marker for reliable reflection detection
-    MARKER = "xSs" + "".join(random.choices(string.digits, k=6))
-
     # ── Payload categories ───────────────────────────────────────────
 
     def __init__(self, session=None, timeout=8, delay=0.05):
         super().__init__(session, timeout, delay)
+        # Generate unique marker per instance for concurrent safety
+        self.MARKER = "xSs" + "".join(random.choices(string.digits, k=6))
         self._smart_loaded = False
         try:
             self.payload_manager = get_payload_manager()
@@ -296,7 +295,7 @@ class XSSScanner(BaseScanner):
         # First, test if the parameter is reflected at all using the marker
         test_params = dict(params)
         test_params[param_name] = [self.MARKER]
-        query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+        query = urlencode(test_params, doseq=True)
         probe_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
         probe_resp = self._request("GET", probe_url)
 
@@ -333,7 +332,7 @@ class XSSScanner(BaseScanner):
             for test_payload in all_to_test:
                 test_params = dict(params)
                 test_params[param_name] = [test_payload]
-                query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+                query = urlencode(test_params, doseq=True)
                 test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
 
                 response = self._request("GET", test_url)

@@ -119,18 +119,33 @@ class TestSSRFScanner:
         """Test SSRF detection with AWS metadata response."""
         scanner = self._make_scanner()
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = (
+        # Baseline response (normal page content)
+        baseline_resp = MagicMock()
+        baseline_resp.status_code = 200
+        baseline_resp.text = "<html><body>Welcome to the app</body></html>"
+        baseline_resp.headers = {}
+
+        # Injection response (AWS metadata indicators)
+        inject_resp = MagicMock()
+        inject_resp.status_code = 200
+        inject_resp.text = (
             "ami-id\ninstance-id\ninstance-type\nlocal-ipv4\nsecurity-groups"
         )
-        mock_resp.headers = {}
+        inject_resp.headers = {}
+
+        call_count = [0]
+
+        def mock_request(method, url, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return baseline_resp  # baseline fetch
+            return inject_resp  # payload injection
 
         injectable = [
             {"name": "url", "url": "http://target.com/fetch?url=http://example.com"}
         ]
 
-        with patch.object(scanner, "_request", return_value=mock_resp):
+        with patch.object(scanner, "_request", side_effect=mock_request):
             findings = scanner.scan("http://target.com/fetch", injectable)
 
         assert len(findings) >= 1
@@ -142,10 +157,25 @@ class TestSSRFScanner:
         """Test SSRF to localhost detection."""
         scanner = self._make_scanner()
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = "<html><head><title>Apache2 Ubuntu Default Page: It works</title></head></html>"
-        mock_resp.headers = {}
+        # Baseline response (normal)
+        baseline_resp = MagicMock()
+        baseline_resp.status_code = 200
+        baseline_resp.text = "<html><body>Normal proxy page</body></html>"
+        baseline_resp.headers = {}
+
+        # Localhost SSRF response (contains Apache default page markers)
+        inject_resp = MagicMock()
+        inject_resp.status_code = 200
+        inject_resp.text = "<html><head><title>Apache2 Ubuntu Default Page: It works</title></head></html>"
+        inject_resp.headers = {}
+
+        call_count = [0]
+
+        def mock_request(method, url, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return baseline_resp
+            return inject_resp
 
         injectable = [
             {
@@ -154,7 +184,7 @@ class TestSSRFScanner:
             }
         ]
 
-        with patch.object(scanner, "_request", return_value=mock_resp):
+        with patch.object(scanner, "_request", side_effect=mock_request):
             findings = scanner.scan("http://target.com/proxy", injectable)
 
         assert len(findings) >= 1

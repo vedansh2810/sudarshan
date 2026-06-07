@@ -115,7 +115,16 @@ class SecurityHeadersScanner(BaseScanner):
         for unsafe_value, directive, description in self.CSP_UNSAFE:
             # Check if directive contains the unsafe value
             pattern = rf"{directive}\s+[^;]*{re.escape(unsafe_value)}"
-            if re.search(pattern, csp_lower):
+            matched = bool(re.search(pattern, csp_lower))
+
+            # Also check default-src as fallback when specific directive is absent
+            if not matched and directive != "default-src":
+                directive_present = re.search(rf"{directive}\s+", csp_lower)
+                if not directive_present:
+                    default_pattern = rf"default-src\s+[^;]*{re.escape(unsafe_value)}"
+                    matched = bool(re.search(default_pattern, csp_lower))
+
+            if matched:
                 findings.append(
                     {
                         "vuln_type": "security_headers",
@@ -139,14 +148,14 @@ class SecurityHeadersScanner(BaseScanner):
     def _check_cookie_flags(self, response, target_url):
         """Check security flags on session cookies."""
         findings = []
-        cookie_header = response.headers.get("Set-Cookie", "")
-        if not cookie_header:
-            return findings
 
-        # Parse Set-Cookie headers
-        cookies_raw = [cookie_header]
-        if hasattr(response.headers, "get_all"):
-            cookies_raw = response.headers.get_all("Set-Cookie")
+        # Collect ALL Set-Cookie headers (response.headers.get only returns the first)
+        cookies_raw = [
+            v for k, v in response.headers.items()
+            if k.lower() == "set-cookie"
+        ]
+        if not cookies_raw:
+            return findings
 
         for cookie in cookies_raw:
             cookie_lower = cookie.lower()

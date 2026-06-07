@@ -1,6 +1,6 @@
 import re
 import logging
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 from app.scanner.vulnerabilities.base import BaseScanner
 from app.scanner.payload_manager import get_payload_manager
 
@@ -141,6 +141,13 @@ class DirectoryTraversalScanner(BaseScanner):
 
     def _test_param(self, url, param_name, params, parsed):
         """Test a URL parameter for directory traversal."""
+        # Fetch baseline to avoid false positives from pages that naturally show file content
+        baseline_resp = self._request("GET", url)
+        baseline_has_indicators = False
+        baseline_evidence = None
+        if baseline_resp:
+            baseline_has_indicators, baseline_evidence = self._check_traversal(baseline_resp.text)
+
         all_payloads = (
             self.BASIC_PAYLOADS + self.ENCODED_PAYLOADS + self.PHP_WRAPPER_PAYLOADS
         )
@@ -148,13 +155,17 @@ class DirectoryTraversalScanner(BaseScanner):
         for payload in all_payloads:
             test_params = dict(params)
             test_params[param_name] = [payload]
-            query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+            query = urlencode(test_params, doseq=True)
             test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
 
             response = self._request("GET", test_url)
             if response:
                 found, evidence = self._check_traversal(response.text)
                 if found:
+                    # Skip if the baseline already had the same indicators
+                    if baseline_has_indicators and evidence == baseline_evidence:
+                        continue
+
                     technique = "basic"
                     if "%" in payload:
                         technique = "encoding bypass"
@@ -182,6 +193,13 @@ class DirectoryTraversalScanner(BaseScanner):
         url = form.get("action", "")
         method = form.get("method", "get").upper()
         inputs = form.get("inputs", [])
+
+        # Fetch baseline to avoid false positives from pages that naturally show file content
+        baseline_resp = self._request("GET", url) if url else None
+        baseline_has_indicators = False
+        baseline_evidence = None
+        if baseline_resp:
+            baseline_has_indicators, baseline_evidence = self._check_traversal(baseline_resp.text)
 
         # Look for file-related input fields
         file_keywords = [
@@ -238,6 +256,10 @@ class DirectoryTraversalScanner(BaseScanner):
                 if response:
                     found, evidence = self._check_traversal(response.text)
                     if found:
+                        # Skip if the baseline already had the same indicators
+                        if baseline_has_indicators and evidence == baseline_evidence:
+                            continue
+
                         return {
                             "technique": "form-based",
                             "payload": payload,

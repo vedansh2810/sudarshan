@@ -91,11 +91,22 @@
         </thead>
         <tbody class="divide-y divide-slate-800/50">
           {% for item in stats.by_type %}
+          {% set vuln_labels = {
+            'sql_injection': 'SQL Injection', 'xss': 'XSS', 'csrf': 'CSRF',
+            'security_headers': 'Security Headers', 'directory_traversal': 'Directory Traversal',
+            'command_injection': 'Command Injection', 'idor': 'IDOR',
+            'xxe': 'XXE', 'ssrf': 'SSRF', 'open_redirect': 'Open Redirect',
+            'cors': 'CORS', 'clickjacking': 'Clickjacking', 'ssti': 'SSTI',
+            'jwt_attacks': 'JWT Attacks', 'broken_auth': 'Broken Auth',
+            'nosql_injection': 'NoSQL Injection', 'file_upload': 'File Upload',
+            'host_header': 'Host Header', 'info_disclosure': 'Info Disclosure',
+            'prototype_pollution': 'Prototype Pollution', 'insecure_deserialization': 'Deserialization'
+          } %}
           <tr class="hover:bg-white/[0.02] transition-colors">
             <td class="px-6 py-4">
               <div class="flex items-center gap-3">
                 <span class="material-symbols-outlined text-primary text-lg">shield</span>
-                <span class="text-sm font-bold text-white">{{ item.type.replace('_', ' ').title() }}</span>
+                <span class="text-sm font-bold text-white">{{ vuln_labels.get(item.type, item.type.replace('_', ' ').title()) }}</span>
               </div>
             </td>
             <td class="px-6 py-4 text-center font-mono text-sm text-white">{{ item.total }}</td>

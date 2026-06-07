@@ -37,6 +37,8 @@ node_modules/
 
 # Test cache
 .pytest_cache/
+htmlcov/
+.coverage
 
 
 

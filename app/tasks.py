@@ -3,29 +3,16 @@
 import time
 import json
 import logging
-import requests as requests_lib
+import httpx
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 from app.celery_app import celery
 from app.config import Config
 from app.scanner.crawler import Crawler
-from app.scanner.vulnerabilities.sql_injection import SQLInjectionScanner
-from app.scanner.vulnerabilities.xss import XSSScanner
-from app.scanner.vulnerabilities.csrf import CSRFScanner
-from app.scanner.vulnerabilities.security_headers import SecurityHeadersScanner
-from app.scanner.vulnerabilities.directory_traversal import DirectoryTraversalScanner
-from app.scanner.vulnerabilities.command_injection import CommandInjectionScanner
-from app.scanner.vulnerabilities.idor import IDORScanner, DirectoryListingScanner
-from app.scanner.vulnerabilities.xxe import XXEScanner
-from app.scanner.vulnerabilities.ssrf import SSRFScanner
-from app.scanner.vulnerabilities.open_redirect import OpenRedirectScanner
-from app.scanner.vulnerabilities.cors import CORSScanner
-from app.scanner.vulnerabilities.clickjacking import ClickjackingScanner
-from app.scanner.vulnerabilities.ssti import SSTIScanner
-from app.scanner.vulnerabilities.jwt_attacks import JWTAttackScanner
-from app.scanner.vulnerabilities.broken_auth import BrokenAuthScanner
+from app.scanner.registry import SCANNER_MAP
 from app.scanner.dvwa_auth import DVWAAuth
+from app.ai.smart_engine import get_smart_engine
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
 from app.monitoring.metrics import (
@@ -236,31 +223,34 @@ def run_scan_task(
             "success",
         )
 
+        # Phase 1.5: AI Reconnaissance (non-blocking)
+        target_context = {}
+        try:
+            smart_engine = get_smart_engine()
+            emit("log", "[*] AI Reconnaissance: Analyzing target...", "info")
+            recon_resp = httpx.get(
+                target_url, timeout=speed_config["timeout"], verify=False, follow_redirects=True
+            )
+            recon_result = smart_engine.reconnaissance(target_url, recon_resp)
+            if recon_result:
+                target_context = recon_result
+                tech_parts = []
+                if recon_result.get("language"):
+                    tech_parts.append(f"Language: {recon_result['language']}")
+                if recon_result.get("framework"):
+                    tech_parts.append(f"Framework: {recon_result['framework']}")
+                if recon_result.get("waf_detected"):
+                    tech_parts.append(f"WAF: {recon_result.get('waf_name', 'Unknown')}")
+                if tech_parts:
+                    emit("log", f'[+] AI Recon: {" | ".join(tech_parts)}', "success")
+        except Exception as e:
+            logger.debug(f"AI reconnaissance skipped: {e}")
+
         # Phase 2: Vulnerability Scanning
         if scan_mode == "active":
             emit("log", "[+] Phase 2: Active vulnerability scanning...", "info")
 
-            scanner_map = {
-                "sql_injection": (SQLInjectionScanner, "SQL Injection"),
-                "xss": (XSSScanner, "Cross-Site Scripting"),
-                "csrf": (CSRFScanner, "CSRF"),
-                "security_headers": (SecurityHeadersScanner, "Security Headers"),
-                "directory_traversal": (
-                    DirectoryTraversalScanner,
-                    "Directory Traversal",
-                ),
-                "command_injection": (CommandInjectionScanner, "Command Injection"),
-                "idor": (IDORScanner, "IDOR"),
-                "directory_listing": (DirectoryListingScanner, "Directory Listing"),
-                "xxe": (XXEScanner, "XXE Injection"),
-                "ssrf": (SSRFScanner, "SSRF"),
-                "open_redirect": (OpenRedirectScanner, "Open Redirect"),
-                "cors": (CORSScanner, "CORS Misconfiguration"),
-                "clickjacking": (ClickjackingScanner, "Clickjacking"),
-                "ssti": (SSTIScanner, "Server-Side Template Injection"),
-                "jwt_attacks": (JWTAttackScanner, "JWT Vulnerabilities"),
-                "broken_auth": (BrokenAuthScanner, "Broken Authentication"),
-            }
+            scanner_map = SCANNER_MAP
 
             checks = selected_checks or Config.VULNERABILITY_CHECKS
             parallel_scanners = [
@@ -276,9 +266,17 @@ def run_scan_task(
                     # Create a fresh session and copy cookies/headers
                     # instead of deepcopy which breaks transport adapters
                     if crawler.session:
-                        scanner_session = requests_lib.Session()
-                        scanner_session.cookies.update(crawler.session.cookies)
-                        scanner_session.headers.update(crawler.session.headers)
+                        timeout_val = speed_config["timeout"]
+                        crawler_cookies = crawler.session.cookies
+                        crawler_headers = crawler.session.headers
+                        scanner_session = httpx.Client(
+                            verify=False,
+                            timeout=httpx.Timeout(timeout_val, connect=5.0),
+                            follow_redirects=True,
+                            cookies=dict(crawler_cookies),
+                            headers=dict(crawler_headers),
+                            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+                        )
                     else:
                         scanner_session = None
                     scanner = ScannerClass(
@@ -311,7 +309,23 @@ def run_scan_task(
                         break
                     wait_if_paused()
 
-                    display_name, scan_findings, error = future.result()
+                    scanner_name = futures_map[future]
+                    try:
+                        display_name, scan_findings, error = future.result(timeout=120)
+                    except TimeoutError:
+                        emit(
+                            "log",
+                            f"[-] {scanner_name}: Timed out after 120s — skipping",
+                            "warning",
+                        )
+                        continue
+                    except Exception as exc:
+                        emit(
+                            "log",
+                            f"[-] {scanner_name}: Unexpected error: {str(exc)[:80]}",
+                            "warning",
+                        )
+                        continue
 
                     if error:
                         emit(
@@ -388,6 +402,61 @@ def run_scan_task(
             # Batch-insert all passive findings
             if passive_findings:
                 Vulnerability.create_batch(scan_id, passive_findings)
+
+        # Phase 3: AI-Powered Finding Verification
+        if findings:
+            try:
+                smart_engine = get_smart_engine()
+                emit("log", f"[*] Phase 3: AI verification of {len(findings)} findings...", "info")
+                verified_findings = []
+                for i, finding in enumerate(findings):
+                    if is_stopped():
+                        break
+                    try:
+                        # Build verification data
+                        vuln_data = {
+                            "vuln_type": finding.get("vuln_type", ""),
+                            "url": finding.get("affected_url", ""),
+                            "parameter": finding.get("parameter", ""),
+                            "payload": finding.get("payload", ""),
+                            "evidence": finding.get("response_data", finding.get("description", "")),
+                        }
+                        # Use ML features from the finding if available
+                        features = finding.get("ml_features", {})
+                        response_data = {
+                            "status_code": finding.get("status_code", "N/A"),
+                            "content_length": finding.get("content_length", "N/A"),
+                            "response_time": finding.get("response_time", "N/A"),
+                            "reflection_detected": finding.get("payload_reflected", "N/A"),
+                            "body_preview": finding.get("response_data", "")[:500],
+                        }
+
+                        verdict, confidence, reasoning = smart_engine.verify_finding(
+                            vuln_data, features, response_data
+                        )
+
+                        finding["ai_verified"] = True
+                        finding["ai_verdict"] = verdict
+                        finding["ai_confidence"] = round(confidence, 2)
+                        finding["ai_reasoning"] = reasoning
+
+                        if verdict == "false_positive":
+                            emit("log", f"[~] AI filtered: {finding['name']} (FP, {confidence:.0%})", "info")
+                        else:
+                            verified_findings.append(finding)
+
+                    except Exception as e:
+                        logger.debug(f"AI verification failed for finding: {e}")
+                        verified_findings.append(finding)  # Keep finding if verification fails
+
+                filtered_count = len(findings) - len(verified_findings)
+                if filtered_count > 0:
+                    emit("log", f"[+] AI filtered {filtered_count} false positives", "success")
+                    # Update findings list (but keep all in DB for transparency)
+                    # The verdict is stored on each finding for the UI to use
+
+            except Exception as e:
+                logger.debug(f"AI verification phase skipped: {e}")
 
         _finalize(
             scan_id,

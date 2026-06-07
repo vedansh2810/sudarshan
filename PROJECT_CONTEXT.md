@@ -4,7 +4,7 @@
 **Backend:** Python 3.12+ / Flask 3.0
 **Database:** PostgreSQL (Supabase) with SQLite fallback
 **Auth:** Supabase Auth (GoTrue) - client-side SDK + server-side token verification
-**AI/LLM:** Groq API (Llama 3.3 70B Versatile)
+**AI/LLM:** Groq API (Llama 3.3 70B Versatile) with multi-key rotation
 **ML:** scikit-learn (Random Forest + Gradient Boosting ensemble)
 **Task Queue:** Celery + Redis (optional - falls back to in-process threading)
 **Frontend:** Jinja2 templates + Tailwind CSS (pre-built) + vanilla JS
@@ -15,9 +15,11 @@
 ## Quick Start
 
 ```bash
-python start.py       # Auto-setup + run (first time: installs deps, creates .env, builds CSS)
-python start.py --check   # Show setup status
-python start.py --setup   # Force re-run setup
+python start.py              # Auto-setup + run (first time: installs deps, creates .env, builds CSS)
+python start.py --check      # Show setup status
+python start.py --setup      # Force re-run setup
+python start.py --run        # Skip setup, just run
+python start.py --setup-guide  # Show Supabase + Groq setup instructions
 ```
 
 ---
@@ -26,19 +28,20 @@ python start.py --setup   # Force re-run setup
 
 ```
 sudarshan/
-|-- start.py                    # One-click setup & run script
+|-- start.py                    # One-click setup & run script (interactive credential prompting)
 |-- run.py                      # Flask entry point (used by start.py)
 |-- requirements.txt            # Python dependencies
 |-- package.json                # Node.js dependencies (Tailwind CSS build)
 |-- tailwind.config.js          # Tailwind CSS configuration
+|-- pyproject.toml              # pytest + coverage configuration
 |-- .env.example                # Environment template with setup instructions
 |-- .gitignore
 |-- PROJECT_CONTEXT.md          # This file
 |-- README.md                   # User-facing documentation
 |
 |-- app/
-|   |-- __init__.py             # Flask factory: create_app(), extensions, middleware
-|   |-- config.py               # Configuration (env vars, security headers, DB URI)
+|   |-- __init__.py             # Flask factory: create_app(), extensions, middleware, error handlers
+|   |-- config.py               # Configuration (env vars, security headers, DB URI, plan limits)
 |   |-- celery_app.py           # Celery worker configuration
 |   |-- tasks.py                # Celery task definitions (async scan execution)
 |   |
@@ -47,10 +50,10 @@ sudarshan/
 |   |   |-- auth.py             # Login/register/logout/callback (Supabase Auth)
 |   |   |-- dashboard.py        # User dashboard (scan history, stats)
 |   |   |-- scan.py             # Scan CRUD, SSE streaming, progress page
-|   |   |-- results.py          # Scan results, PDF reports, AI analysis
+|   |   |-- results.py          # Scan results, PDF/HTML reports, AI analysis
 |   |   |-- history.py          # Scan history with filtering
 |   |   |-- api.py              # API v1 (health, metrics, legacy status)
-|   |   |-- api_v2.py           # API v2 (full REST API with API key auth)
+|   |   |-- api_v2.py           # API v2 (full REST API with session auth)
 |   |   |-- ml_admin.py         # ML model admin (labeling, stats, retraining)
 |   |
 |   |-- models/
@@ -64,10 +67,11 @@ sudarshan/
 |   |   |-- ml_training.py      # ML training data models (labels, scan attempts)
 |   |
 |   |-- scanner/
-|   |   |-- scan_manager.py     # Orchestrator: threading, SSE, Redis pub/sub
+|   |   |-- scan_manager.py     # Orchestrator: threading, SSE, Redis pub/sub, pause/resume/stop
 |   |   |-- crawler.py          # Web crawler (BFS, robots.txt, form discovery)
 |   |   |-- dvwa_auth.py        # DVWA auto-login for testing
 |   |   |-- payload_manager.py  # Centralized payload system (PortSwigger + custom)
+|   |   |-- registry.py         # Scanner registry — single source of truth for all scanner classes
 |   |   |-- vulnerabilities/
 |   |       |-- base.py         # Base scanner class (shared logic, AI enrichment)
 |   |       |-- sql_injection.py
@@ -82,13 +86,19 @@ sudarshan/
 |   |       |-- security_headers.py
 |   |       |-- open_redirect.py
 |   |       |-- ssti.py
-|   |       |-- idor.py
+|   |       |-- idor.py              # IDOR + DirectoryListingScanner
 |   |       |-- broken_auth.py
 |   |       |-- jwt_attacks.py
+|   |       |-- nosql_injection.py   # NEW: MongoDB/CouchDB operator, JS, blind injection
+|   |       |-- file_upload.py       # NEW: Dangerous extension, MIME bypass, null byte
+|   |       |-- host_header.py       # NEW: Host injection, password reset poisoning
+|   |       |-- info_disclosure.py   # NEW: Sensitive files, stack traces, debug pages
+|   |       |-- prototype_pollution.py  # NEW: __proto__, constructor.prototype injection
+|   |       |-- insecure_deserialization.py  # NEW: Java/PHP/Python/ViewState detection
 |   |
 |   |-- ai/
 |   |   |-- smart_engine.py     # AI orchestrator (PortSwigger context, ML integration)
-|   |   |-- llm_client.py       # Groq API wrapper (retry, JSON parsing)
+|   |   |-- llm_client.py       # Groq API wrapper (multi-key rotation, token-aware rate limiting, caching)
 |   |   |-- analyzer.py         # LLM vulnerability analysis prompts
 |   |   |-- report_writer.py    # LLM report generation (exec summary, remediation)
 |   |
@@ -125,8 +135,7 @@ sudarshan/
 |       |   |-- new.html            # New scan form (URL, depth, modules)
 |       |   |-- progress.html       # Live scan progress (SSE + polling fallback)
 |       |-- results/
-|       |   |-- detail.html         # Scan results with vulnerability cards
-|       |   |-- report.html         # Printable/PDF report view
+|       |   |-- view.html           # Scan results with vulnerability cards
 |       |-- history/
 |       |   |-- index.html          # Scan history with filters
 |       |-- main/
@@ -143,7 +152,7 @@ sudarshan/
 |   |-- ml_models/                  # Trained ML models (committed)
 |   |   |-- fp_classifier_*.joblib  # False-positive classifier model
 |   |-- database.db                 # SQLite database (gitignored, auto-created)
-|   |-- reports/                    # Generated PDF reports (gitignored)
+|   |-- reports/                    # Generated PDF/HTML reports (gitignored)
 |   |-- report_diagrams/            # Generated diagrams (gitignored)
 |
 |-- scripts/                        # Standalone dev/build scripts
@@ -155,8 +164,11 @@ sudarshan/
 |   |-- generate_report_p1/p2/p3.py # Generate project documentation
 |
 |-- tests/                          # Test suite
+|   |-- test_crawler.py             # Crawler unit tests (robots.txt, URL extraction)
 |   |-- test_crawler_scanner.py     # Crawler and scanner integration tests
 |   |-- test_new_scanners.py        # Vulnerability scanner unit tests
+|   |-- test_phase5_scanners.py     # Phase 5 scanner tests (NoSQL, file upload, host header, etc.)
+|   |-- test_integration.py         # End-to-end integration tests
 |   |-- test_multi_tenancy.py       # Organization/multi-tenant tests
 |   |-- test_smart_engine_integration.py  # AI engine integration tests
 |   |-- test_stateless_scan_manager.py    # Scan manager state tests
@@ -191,6 +203,12 @@ sudarshan/
 7. **Phase 5 - Scoring:** Security score calculated, results saved to DB
 8. Real-time updates via SSE (Server-Sent Events) with Redis pub/sub fallback to polling
 
+### Scanner Registry
+
+The `app/scanner/registry.py` module provides a centralized `SCANNER_MAP` dict that maps
+config key names to `(ScannerClass, display_name)` tuples. Both `scan_manager.py` and
+`tasks.py` import from the registry to avoid duplicated scanner lists.
+
 ### Database Strategy
 
 - **Primary:** PostgreSQL via Supabase (`DATABASE_URL` in `.env`)
@@ -202,6 +220,10 @@ sudarshan/
 ### AI / LLM Integration
 
 - **Provider:** Groq API (fast inference on Llama 3.3 70B)
+- **Multi-key rotation:** Supports multiple API keys (`GROQ_API_KEYS=key1,key2,...`)
+  with round-robin rotation and automatic failover on rate limit (429)
+- **Token-aware rate limiting:** Enforces both RPM and TPM budgets per key with concurrency control
+- **Response caching:** TTL-based cache (1 hour) to avoid redundant API calls
 - **SmartEngine** (`app/ai/smart_engine.py`) orchestrates:
   - PortSwigger knowledge base lookups
   - AI-powered vulnerability analysis
@@ -215,6 +237,7 @@ sudarshan/
 - Scans are scoped to user or organization
 - API keys can be org-scoped
 - Webhooks fire on scan events (complete, error, vulnerability found)
+- Plan-based resource limits (free/pro/enterprise) control scan quotas, team size, and AI access
 
 ---
 
@@ -228,8 +251,13 @@ sudarshan/
 | `SUPABASE_SERVICE_KEY` | Yes* | Supabase service role key |
 | `DATABASE_URL` | No | PostgreSQL URI (falls back to SQLite) |
 | `REDIS_URL` | No | Redis URI (falls back to threading) |
-| `GROQ_API_KEY` | No | Groq API key for AI features |
+| `GROQ_API_KEY` | No | Single Groq API key for AI features |
+| `GROQ_API_KEYS` | No | Comma-separated Groq keys for rotation (overrides GROQ_API_KEY) |
+| `GROQ_MODEL` | No | LLM model name (default: `llama-3.3-70b-versatile`) |
 | `PORT` | No | Server port (default: 5000) |
+| `FLASK_DEBUG` | No | Debug mode (default: 1; disable in production) |
+| `ALLOW_LOCAL_TARGETS` | No | Allow scanning localhost/private IPs (default: false) |
+| `ALLOW_INSECURE_TARGETS` | No | Skip TLS verification for testing (default: false) |
 
 *Required for login/register to work. Without these, auth pages will render but Supabase JS SDK will fail silently.
 
@@ -244,8 +272,14 @@ sudarshan/
 - `GET /dashboard` - User dashboard
 - `GET /scan/new`, `POST /scan/new` - New scan
 - `GET /scan/<id>/progress` - Live progress (SSE)
+- `GET /scan/<id>/status` - JSON status (polling)
+- `GET /scan/<id>/stream` - SSE event stream
+- `POST /scan/<id>/pause` - Pause scan
+- `POST /scan/<id>/resume` - Resume scan
+- `POST /scan/<id>/stop` - Stop scan
 - `GET /scan/<id>/results` - Results page
-- `GET /scan/<id>/report` - PDF report
+- `GET /scan/<id>/report/pdf` - PDF report download
+- `GET /scan/<id>/report/html` - HTML report download
 - `GET /history` - Scan history
 
 ### API v2 (JSON, session auth via @login_required)
@@ -270,7 +304,7 @@ sudarshan/
 
 ---
 
-## Vulnerability Scanners (15 modules)
+## Vulnerability Scanners (22 modules)
 
 | Scanner | File | Techniques |
 |---------|------|------------|
@@ -287,8 +321,15 @@ sudarshan/
 | Open Redirect | `open_redirect.py` | Parameter-based, path-based, encoding bypass |
 | SSTI | `ssti.py` | Jinja2, Twig, Freemarker, Velocity detection |
 | IDOR | `idor.py` | Sequential ID, UUID, parameter manipulation |
+| Directory Listing | `idor.py` | Common dir enumeration, SPA-aware canary detection |
 | Broken Auth | `broken_auth.py` | Default creds, session fixation, enum |
 | JWT Attacks | `jwt_attacks.py` | Algorithm confusion, none alg, key confusion |
+| NoSQL Injection | `nosql_injection.py` | MongoDB operator ($gt/$ne/$regex), JS injection, blind |
+| File Upload | `file_upload.py` | Dangerous extension, MIME bypass, double extension, null byte |
+| Host Header | `host_header.py` | Host injection, X-Forwarded-Host, password reset poisoning |
+| Info Disclosure | `info_disclosure.py` | .git/.env exposure, stack traces, debug pages, backup files |
+| Prototype Pollution | `prototype_pollution.py` | __proto__, constructor.prototype, JSON body injection |
+| Insecure Deserialization | `insecure_deserialization.py` | Java/PHP/Python serialized cookies, ViewState, parameter injection |
 
 ---
 

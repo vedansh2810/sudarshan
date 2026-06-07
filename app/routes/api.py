@@ -3,6 +3,7 @@ from app.models.scan import Scan
 from app.models.database import db, ScanModel, VulnerabilityModel
 from app.scanner.scan_manager import ScanManager
 from app.utils.auth_utils import login_required
+from app.utils.auth_helpers import user_can_access_scan
 from app import csrf, limiter
 from sqlalchemy import func
 
@@ -15,9 +16,9 @@ limiter.limit("60 per minute")(api_bp)
 @api_bp.route("/api/scan/<int:scan_id>/status")
 @login_required
 def scan_status(scan_id):
-    scan = Scan.get_by_id(scan_id)
-    if not scan or scan["user_id"] != session["user_id"]:
+    if not user_can_access_scan(scan_id, session["user_id"]):
         return jsonify({"error": "Not found"}), 404
+    scan = Scan.get_by_id(scan_id)
     manager = ScanManager.get_instance()
     status = manager.get_status(scan_id)
     return jsonify(status or {"status": scan["status"]})
@@ -65,6 +66,7 @@ def health():
 
 
 @api_bp.route("/api/metrics")
+@login_required
 @csrf.exempt
 def metrics():
     """Prometheus metrics endpoint."""

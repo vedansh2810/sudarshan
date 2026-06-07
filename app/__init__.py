@@ -132,6 +132,12 @@ def create_app(config=None):
         format="[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
     )
 
+    # Suppress DEBUG logs from httpx/groq SDK that leak API keys in
+    # Authorization headers. These libraries log full request headers
+    # at DEBUG level, exposing Bearer tokens (gsk_...) in terminal output.
+    for noisy_logger in ("httpx", "httpcore", "groq", "groq._base_client"):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
     # ── Session security: make all sessions permanent ────────────────────
     # This activates PERMANENT_SESSION_LIFETIME (8h default).
     # Without this, Flask sessions never expire server-side.
@@ -278,7 +284,8 @@ def create_app(config=None):
         return "Internal server error", 500
 
     # Call init_app if the config class defines it (production validation)
-    if hasattr(app.config.get("__class__", type(None)), "init_app"):
-        pass  # init_app is a @staticmethod on the config class, called via from_object
+    config_class = config or DevelopmentConfig
+    if hasattr(config_class, "init_app"):
+        config_class.init_app(app)
 
     return app

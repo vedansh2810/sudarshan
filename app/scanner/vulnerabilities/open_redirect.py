@@ -6,6 +6,7 @@ Detects open redirect vulnerabilities where user input controls
 redirect destinations, enabling phishing attacks.
 """
 
+import re
 import logging
 from urllib.parse import urlparse, parse_qs
 from app.scanner.vulnerabilities.base import BaseScanner
@@ -67,6 +68,15 @@ class OpenRedirectScanner(BaseScanner):
         ("https://example.com@evil.com", "evil.com"),
         # Tab/newline injection bypass
         ("http://evil%09.com", "evil"),
+        # Additional bypass techniques
+        ("///evil.com", "evil.com"),
+        ("https://evil.com#legitimate.com", "evil.com"),
+        ("https://evil.com?legitimate.com", "evil.com"),
+        ("/%09/evil.com", "evil.com"),
+        ("/%5Cevil.com", "evil.com"),
+        (".evil.com", "evil.com"),
+        ("https:evil.com", "evil.com"),
+        ("%2F%2Fevil.com", "evil.com"),
     ]
 
     # ── Parameter detection ──────────────────────────────────────────
@@ -106,75 +116,119 @@ class OpenRedirectScanner(BaseScanner):
             if not response:
                 return None
 
-            # Check for redirect status codes
-            if response.status_code not in (301, 302, 303, 307, 308):
-                return None
+            # Check for redirect status codes (HTTP 3xx)
+            if response.status_code in (301, 302, 303, 307, 308):
+                location = response.headers.get("Location", "")
+                if location and expected_domain.lower() in location.lower():
+                    # Record ML data
+                    self._record_attempt(
+                        url=url,
+                        param=param_name,
+                        payload=payload,
+                        baseline_response=None,
+                        test_response=response,
+                        vuln_found=True,
+                        technique="open-redirect",
+                        vuln_type="open_redirect",
+                        confidence=90,
+                        severity="medium",
+                        method="GET",
+                        context="query_parameter",
+                    )
 
-            location = response.headers.get("Location", "")
-            if not location:
-                return None
+                    return {
+                        "vuln_type": "open_redirect",
+                        "name": f'Open Redirect via "{param_name}" parameter',
+                        "description": (
+                            f'The parameter "{param_name}" is used to redirect users '
+                            f"without validating the destination URL. The server redirected "
+                            f'to the attacker-controlled domain "{expected_domain}" with '
+                            f"HTTP {response.status_code}."
+                        ),
+                        "impact": (
+                            "Open redirects enable:\n"
+                            "• Phishing attacks (users trust the original domain)\n"
+                            "• OAuth token theft via redirect_uri manipulation\n"
+                            "• Bypassing domain-based security filters\n"
+                            "• Social engineering campaigns"
+                        ),
+                        "severity": "medium",
+                        "cvss_score": 6.1,
+                        "confidence": 90,
+                        "owasp_category": "A01",
+                        "cwe": "CWE-601",
+                        "affected_url": test_url,
+                        "parameter": param_name,
+                        "payload": payload,
+                        "request_data": f"GET {test_url}",
+                        "response_data": (
+                            f"Status: {response.status_code}\n" f"Location: {location}"
+                        ),
+                        "remediation": (
+                            "1. Validate redirect URLs against an allowlist of trusted domains\n"
+                            "2. Use relative URLs for redirects instead of absolute URLs\n"
+                            "3. Map redirect targets to safe predefined paths (e.g., redirect=dashboard)\n"
+                            "4. Warn users before redirecting to external sites\n"
+                            "5. Avoid using user input to construct redirect destinations"
+                        ),
+                    }
 
-            # Check if Location points to attacker domain
-            loc_lower = location.lower()
-            if expected_domain.lower() not in loc_lower:
-                return None
-
-            # Record ML data
-            self._record_attempt(
-                url=url,
-                param=param_name,
-                payload=payload,
-                baseline_response=None,
-                test_response=response,
-                vuln_found=True,
-                technique="open-redirect",
-                vuln_type="open_redirect",
-                confidence=90,
-                severity="medium",
-                method="GET",
-                context="query_parameter",
-            )
-
-            return {
-                "vuln_type": "open_redirect",
-                "name": f'Open Redirect via "{param_name}" parameter',
-                "description": (
-                    f'The parameter "{param_name}" is used to redirect users '
-                    f"without validating the destination URL. The server redirected "
-                    f'to the attacker-controlled domain "{expected_domain}" with '
-                    f"HTTP {response.status_code}."
-                ),
-                "impact": (
-                    "Open redirects enable:\n"
-                    "• Phishing attacks (users trust the original domain)\n"
-                    "• OAuth token theft via redirect_uri manipulation\n"
-                    "• Bypassing domain-based security filters\n"
-                    "• Social engineering campaigns"
-                ),
-                "severity": "medium",
-                "cvss_score": 6.1,
-                "confidence": 90,
-                "owasp_category": "A01",
-                "cwe": "CWE-601",
-                "affected_url": test_url,
-                "parameter": param_name,
-                "payload": payload,
-                "request_data": f"GET {test_url}",
-                "response_data": (
-                    f"Status: {response.status_code}\n" f"Location: {location}"
-                ),
-                "remediation": (
-                    "1. Validate redirect URLs against an allowlist of trusted domains\n"
-                    "2. Use relative URLs for redirects instead of absolute URLs\n"
-                    "3. Map redirect targets to safe predefined paths (e.g., redirect=dashboard)\n"
-                    "4. Warn users before redirecting to external sites\n"
-                    "5. Avoid using user input to construct redirect destinations"
-                ),
-            }
+            # Also check for JavaScript-based redirects in the response body
+            if response.status_code == 200 and self._check_js_redirect(response, expected_domain):
+                return {
+                    "vuln_type": "open_redirect",
+                    "name": f'JavaScript Open Redirect via "{param_name}" parameter',
+                    "description": (
+                        f'The parameter "{param_name}" is reflected into JavaScript redirect '
+                        f'code, causing a client-side redirect to "{expected_domain}". '
+                        "This bypasses server-side redirect validation."
+                    ),
+                    "impact": (
+                        "JavaScript open redirects enable:\n"
+                        "• Phishing attacks via client-side navigation\n"
+                        "• OAuth token theft\n"
+                        "• XSS escalation in some contexts"
+                    ),
+                    "severity": "medium",
+                    "cvss_score": 6.1,
+                    "confidence": 80,
+                    "owasp_category": "A01",
+                    "cwe": "CWE-601",
+                    "affected_url": test_url,
+                    "parameter": param_name,
+                    "payload": payload,
+                    "request_data": f"GET {test_url}",
+                    "response_data": f"Status: {response.status_code}\nJS redirect to {expected_domain} detected",
+                    "remediation": (
+                        "1. Never reflect user input into JavaScript redirect code\n"
+                        "2. Validate redirect URLs server-side before rendering\n"
+                        "3. Use a server-side redirect instead of client-side JavaScript"
+                    ),
+                }
+            return None
 
         except Exception as e:
             logger.debug(f"Open redirect test error: {e}")
             return None
+
+    def _check_js_redirect(self, response, expected_domain):
+        """Check if the response contains JavaScript that would redirect to the expected domain."""
+        if not response or not response.text:
+            return False
+        text = response.text.lower()
+        domain_escaped = re.escape(expected_domain.lower())
+        # Check for JS redirect patterns
+        redirect_patterns = [
+            rf'window\.location\s*=\s*["\'][^"\']*{domain_escaped}',
+            rf'location\.href\s*=\s*["\'][^"\']*{domain_escaped}',
+            rf'location\.replace\s*\(\s*["\'][^"\']*{domain_escaped}',
+            rf'location\.assign\s*\(\s*["\'][^"\']*{domain_escaped}',
+            rf'meta[^>]*refresh[^>]*{domain_escaped}',
+        ]
+        for pattern in redirect_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True
+        return False
 
     # ── Form testing ─────────────────────────────────────────────────
 

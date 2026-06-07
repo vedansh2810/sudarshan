@@ -25,24 +25,24 @@ logger = logging.getLogger(__name__)
 # Each probe is (payload, expected_output_regex, engine_hint)
 EXPRESSION_PROBES = [
     # Jinja2 / Twig / Nunjucks
-    ("{{7*7}}", r"49", "Jinja2/Twig"),
+    ("{{7*7191}}", r"50337", "Jinja2/Twig"),
     ("{{7*'7'}}", r"7777777", "Jinja2"),
     ("{{config}}", r"<Config", "Jinja2 (Flask)"),
     # Mako
-    ("${7*7}", r"49", "Mako/EL"),
+    ("${7*7191}", r"50337", "Mako/EL"),
     # Freemarker
-    ("${7?int*7}", r"49", "Freemarker"),
-    ("<#assign x=7*7>${x}", r"49", "Freemarker"),
+    ("${7191?int*7}", r"50337", "Freemarker"),
+    ("<#assign x=7*7191>${x}", r"50337", "Freemarker"),
     # Smarty
-    ("{7*7}", r"49", "Smarty"),
+    ("{7*7191}", r"50337", "Smarty"),
     # ERB (Ruby)
-    ("<%= 7*7 %>", r"49", "ERB"),
+    ("<%= 7*7191 %>", r"50337", "ERB"),
     # Pebble
-    ("{% set x = 7*7 %}{{x}}", r"49", "Pebble"),
+    ("{% set x = 7*7191 %}{{x}}", r"50337", "Pebble"),
     # Velocity
-    ("#set($x=7*7)$x", r"49", "Velocity"),
+    ("#set($x=7*7191)$x", r"50337", "Velocity"),
     # General polyglot
-    ("${7*7}{{7*7}}", r"49", "Generic"),
+    ("${7*7191}{{7*7191}}", r"50337", "Generic"),
 ]
 
 # Error signatures that reveal the template engine
@@ -73,17 +73,18 @@ class SSTIScanner(BaseScanner):
 
     def __init__(self, session=None, timeout=8, delay=0.5):
         super().__init__(session, timeout, delay)
+        # Create instance-level copy to avoid mutating the global list
+        self._expression_probes = list(EXPRESSION_PROBES)
         # AI-generated smart payloads
         try:
             smart = self._get_smart_payloads("ssti")
             if smart:
-                global EXPRESSION_PROBES
-                existing_payloads = {p[0] for p in EXPRESSION_PROBES}
+                existing_payloads = {p[0] for p in self._expression_probes}
                 for payload in smart:
                     if payload not in existing_payloads:
-                        EXPRESSION_PROBES = list(EXPRESSION_PROBES) + [
+                        self._expression_probes.append(
                             (payload, r"49|7777777", "AI-generated")
-                        ]
+                        )
         except Exception:
             pass
 
@@ -95,9 +96,24 @@ class SSTIScanner(BaseScanner):
 
         tested = set()
         for point in injectable_points:
-            url = point.get("url", "")
-            params = point.get("params", {})
+            url = point.get("url", target_url)
             method = point.get("method", "GET").upper()
+
+            # Handle crawler's flat format: {"name": "param", "value": "val", "url": "..."}
+            params = point.get("params", {})
+            if not params and point.get("name"):
+                params = {point["name"]: point.get("value", "")}
+
+            # Handle form-type points with inputs list
+            if not params and point.get("type") == "form":
+                url = point.get("action", url)
+                method = point.get("method", "GET").upper()
+                for inp in point.get("inputs", []):
+                    if inp.get("name"):
+                        params[inp["name"]] = inp.get("value", "")
+
+            if not params:
+                continue
 
             for param_name in params:
                 key = (url, param_name, method)
@@ -131,7 +147,7 @@ class SSTIScanner(BaseScanner):
 
         baseline_text = getattr(baseline, "text", "") or "" if baseline else ""
 
-        for payload, expected_re, engine_hint in EXPRESSION_PROBES:
+        for payload, expected_re, engine_hint in self._expression_probes:
             test_params = dict(params)
             test_params[param_name] = payload
 
@@ -146,6 +162,18 @@ class SSTIScanner(BaseScanner):
             if re.search(expected_re, resp_text):
                 # Verify it's not in the baseline
                 if not re.search(expected_re, baseline_text):
+                    # Confirmation: test with a different expression to reduce FP
+                    confirm_payload = "{{13*7191}}" if "{{" in payload else "${13*7191}"
+                    confirm_expected = "93483"  # 13*7191
+                    confirm_params = dict(params)
+                    confirm_params[param_name] = confirm_payload
+                    if method == "GET":
+                        confirm_resp = self._request("GET", url, params=confirm_params)
+                    else:
+                        confirm_resp = self._request("POST", url, data=confirm_params)
+                    if not confirm_resp or not re.search(confirm_expected, confirm_resp.text or ""):
+                        continue  # First probe was a false positive
+
                     self._record_attempt(
                         url,
                         param_name,

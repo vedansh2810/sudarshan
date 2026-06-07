@@ -73,21 +73,41 @@
 
     <!-- Vulnerability Checks -->
     <div>
-      <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 font-mono">Vulnerability Checks</label>
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div class="flex items-center justify-between mb-3">
+        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Vulnerability Checks</label>
+        <button type="button" onclick="toggleAllChecks()" id="toggle-checks-btn"
+          class="text-xs text-primary hover:text-cyan-400 font-mono cursor-pointer bg-transparent border border-primary/30 rounded-md px-3 py-1 transition-colors hover:bg-primary/10">
+          Deselect All
+        </button>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {% set check_icons = {
           'sql_injection': 'database', 'xss': 'code', 'csrf': 'sync_problem',
           'security_headers': 'verified_user', 'directory_traversal': 'folder_open',
           'command_injection': 'terminal', 'idor': 'person_search',
           'directory_listing': 'list', 'xxe': 'data_object', 'ssrf': 'cloud_sync',
           'open_redirect': 'exit_to_app', 'cors': 'public', 'clickjacking': 'mouse',
-          'ssti': 'integration_instructions', 'jwt_attacks': 'key', 'broken_auth': 'lock_open'
+          'ssti': 'integration_instructions', 'jwt_attacks': 'key', 'broken_auth': 'lock_open',
+          'nosql_injection': 'data_array', 'file_upload': 'upload_file',
+          'host_header': 'dns', 'info_disclosure': 'visibility',
+          'prototype_pollution': 'schema', 'insecure_deserialization': 'package_2'
+        } %}
+        {% set check_labels = {
+          'sql_injection': 'SQL Injection', 'xss': 'XSS', 'csrf': 'CSRF',
+          'security_headers': 'Security Headers', 'directory_traversal': 'Directory Traversal',
+          'command_injection': 'Command Injection', 'idor': 'IDOR',
+          'directory_listing': 'Directory Listing', 'xxe': 'XXE', 'ssrf': 'SSRF',
+          'open_redirect': 'Open Redirect', 'cors': 'CORS', 'clickjacking': 'Clickjacking',
+          'ssti': 'SSTI', 'jwt_attacks': 'JWT Attacks', 'broken_auth': 'Broken Auth',
+          'nosql_injection': 'NoSQL Injection', 'file_upload': 'File Upload',
+          'host_header': 'Host Header', 'info_disclosure': 'Info Disclosure',
+          'prototype_pollution': 'Prototype Pollution', 'insecure_deserialization': 'Deserialization'
         } %}
         {% for check in checks %}
         <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all has-[:checked]:border-primary/30 has-[:checked]:bg-primary/5 has-[:checked]:text-white border-slate-800 bg-white/[0.01] text-slate-500 hover:border-slate-600">
           <input type="checkbox" name="checks" value="{{ check }}" checked class="hidden">
           <span class="material-symbols-outlined text-lg">{{ check_icons.get(check, 'shield') }}</span>
-          <span class="text-xs font-semibold">{{ check.replace('_', ' ').title() }}</span>
+          <span class="text-xs font-semibold">{{ check_labels.get(check, check.replace('_', ' ').title()) }}</span>
         </label>
         {% endfor %}
       </div>
@@ -117,6 +137,27 @@
 
 {% block scripts %}
 <script>
+  function toggleAllChecks() {
+    const checks = document.querySelectorAll('input[name="checks"]');
+    const btn = document.getElementById('toggle-checks-btn');
+    const allChecked = Array.from(checks).every(c => c.checked);
+    checks.forEach(c => {
+      c.checked = !allChecked;
+      // Trigger visual state update by re-evaluating :has-[:checked]
+      const label = c.closest('label');
+      if (label) {
+        if (!allChecked) {
+          label.classList.add('border-primary/30', 'bg-primary/5', 'text-white');
+          label.classList.remove('border-slate-800', 'text-slate-500');
+        } else {
+          label.classList.remove('border-primary/30', 'bg-primary/5', 'text-white');
+          label.classList.add('border-slate-800', 'text-slate-500');
+        }
+      }
+    });
+    btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+  }
+
   document.querySelector('form').addEventListener('submit', function(e) {
     const btn = document.getElementById('launch-btn');
     const icon = document.getElementById('launch-icon');

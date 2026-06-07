@@ -163,9 +163,15 @@ class CSRFScanner(BaseScanner):
             else:
                 data[name] = inp.get("value", "") or "test"
 
-        # Submit without Referer header
-        headers = {"Referer": "", "Origin": ""}
-        response = self._request("POST", url, data=data, headers=headers)
+        # Submit without Referer/Origin headers (remove them entirely)
+        saved_referer = self.session.headers.pop("Referer", None)
+        saved_origin = self.session.headers.pop("Origin", None)
+        response = self._request("POST", url, data=data)
+        # Restore headers
+        if saved_referer:
+            self.session.headers["Referer"] = saved_referer
+        if saved_origin:
+            self.session.headers["Origin"] = saved_origin
 
         if response and response.status_code in (200, 302):
             return True  # Request accepted without Referer — vulnerable
@@ -265,5 +271,36 @@ class CSRFScanner(BaseScanner):
                         ),
                     }
                 )
+
+            # ── Has valid token — also check Referer/Origin enforcement ──
+            if not invalid_result:
+                referer_vulnerable = self._test_referer_required(point)
+                if referer_vulnerable:
+                    seen.add(key)
+                    self.findings.append(
+                        {
+                            "vuln_type": "csrf",
+                            "name": "Missing Referer/Origin Validation",
+                            "description": (
+                                f"The form at {form_url} accepts submissions without valid "
+                                "Referer or Origin headers. While a CSRF token is present, "
+                                "additional Referer/Origin validation provides defense-in-depth."
+                            ),
+                            "impact": "Reduced CSRF protection. If the token is ever leaked or bypassed, "
+                                      "there is no secondary defense.",
+                            "severity": "low",
+                            "cvss_score": 3.5,
+                            "owasp_category": "A01",
+                            "affected_url": form_url,
+                            "parameter": "Referer/Origin headers",
+                            "payload": "Submitted form without Referer/Origin headers",
+                            "request_data": f"POST {form_url} (no Referer/Origin)",
+                            "response_data": "Server accepted request without Referer/Origin validation",
+                            "remediation": (
+                                "Validate the Origin header on state-changing requests as defense-in-depth. "
+                                "Reject requests with missing or unexpected Origin/Referer values."
+                            ),
+                        }
+                    )
 
         return self.findings

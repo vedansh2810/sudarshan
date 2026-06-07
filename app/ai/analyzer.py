@@ -171,8 +171,8 @@ def classify_false_positive(vuln_data, response_data=None):
     try:
         from app.ai.smart_engine import get_smart_engine
         engine = get_smart_engine()
-        # Build minimal features for ML prediction if response data available
-        if response_data:
+        # Build ML features only if we have sufficient response data
+        if response_data and response_data.get('baseline_status') is not None:
             features = {
                 'payload_length': len(vuln_data.get('payload', '') or ''),
                 'payload_special_chars': sum(
@@ -185,17 +185,17 @@ def classify_false_positive(vuln_data, response_data=None):
                     for kw in ('SELECT', 'UNION', 'DROP', 'SLEEP')
                 ) else 0,
                 'payload_has_encoding': 1 if '%' in (vuln_data.get('payload', '') or '') else 0,
-                'baseline_status': 200,
-                'baseline_length': response_data.get('length', 0),
+                'baseline_status': response_data.get('baseline_status', 200),
+                'baseline_length': response_data.get('baseline_length', 0),
                 'test_status': response_data.get('status_code', 200),
                 'test_length': response_data.get('length', 0),
-                'response_time': 0,
-                'status_changed': 0,
-                'length_diff': 0,
-                'length_ratio': 1.0,
-                'error_count': 0,
-                'has_db_error': 0,
-                'payload_reflected': 0,
+                'response_time': response_data.get('response_time', 0),
+                'status_changed': 1 if response_data.get('baseline_status', 200) != response_data.get('status_code', 200) else 0,
+                'length_diff': abs(response_data.get('baseline_length', 0) - response_data.get('length', 0)),
+                'length_ratio': (response_data.get('length', 1) / max(response_data.get('baseline_length', 1), 1)),
+                'error_count': response_data.get('error_count', 0),
+                'has_db_error': response_data.get('has_db_error', 0),
+                'payload_reflected': response_data.get('payload_reflected', 0),
             }
             ml_is_tp, ml_conf = engine.ml_predict(features)
             ml_section = (
@@ -203,6 +203,7 @@ def classify_false_positive(vuln_data, response_data=None):
                 f'  - Prediction: {"True Positive" if ml_is_tp else "False Positive"}\n'
                 f'  - Confidence: {ml_conf:.1f}%\n'
             )
+        # Skip ML when we don't have enough data for meaningful predictions
     except Exception:
         pass
 
@@ -251,6 +252,7 @@ def analyze_with_portswigger(vuln_data):
 
     # Get PortSwigger context
     portswigger_context = 'No PortSwigger data available.'
+    engine = None
     try:
         from app.ai.smart_engine import get_smart_engine
         engine = get_smart_engine()
@@ -275,8 +277,9 @@ def analyze_with_portswigger(vuln_data):
         if result and isinstance(result, dict):
             # Enrich with actual PortSwigger lab URLs
             try:
-                labs = engine.get_portswigger_labs_for_vuln(vuln_data.get('vuln_type', ''))
-                result['portswigger_lab_urls'] = labs
+                if engine:
+                    labs = engine.get_portswigger_labs_for_vuln(vuln_data.get('vuln_type', ''))
+                    result['portswigger_lab_urls'] = labs
             except Exception:
                 pass
             logger.info(f"PortSwigger-enriched analysis complete for {vuln_data.get('vuln_type')}")

@@ -1,6 +1,6 @@
 import re
 import logging
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 from app.scanner.vulnerabilities.base import BaseScanner
 from app.scanner.payload_manager import get_payload_manager
 
@@ -14,7 +14,9 @@ class CommandInjectionScanner(BaseScanner):
     # ── Payloads ─────────────────────────────────────────────────────
 
     def __init__(self, session=None, timeout=8, delay=0.5):
-        super().__init__(session, timeout, delay)
+        # Command injection needs a higher timeout because OS commands
+        # (especially on busy targets) can take longer than typical web requests.
+        super().__init__(session, max(timeout, 10), delay)
         try:
             self.payload_manager = get_payload_manager()
             pm_payloads = self.payload_manager.get_payloads(
@@ -194,7 +196,7 @@ class CommandInjectionScanner(BaseScanner):
             orig_val = params.get(param_name, ["test"])[0]
             test_params = dict(params)
             test_params[param_name] = [orig_val + payload]
-            query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+            query = urlencode(test_params, doseq=True)
             test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
 
             response = self._request("GET", test_url)
@@ -232,7 +234,7 @@ class CommandInjectionScanner(BaseScanner):
             orig_val = params.get(param_name, ["test"])[0]
             test_params = dict(params)
             test_params[param_name] = [orig_val + payload]
-            query = "&".join(f"{k}={v[0]}" for k, v in test_params.items())
+            query = urlencode(test_params, doseq=True)
             test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{query}"
 
             resp, elapsed = self._timed_request("GET", test_url)
@@ -297,24 +299,33 @@ class CommandInjectionScanner(BaseScanner):
                         }
 
             # Time-based blind on forms
+            # Build clean data (no payload) for baseline measurement
+            clean_data = {}
+            for inp in inputs:
+                if inp["type"] in ("submit", "button"):
+                    clean_data[inp["name"]] = inp.get("value", "Submit")
+                else:
+                    clean_data[inp["name"]] = inp.get("value", "") or "test"
+
+            baseline = self._get_baseline_time(
+                url, method=method, data=clean_data if method == "POST" else None
+            )
+
             for payload_template in self.LINUX_TIME_PAYLOADS[:3]:
                 payload = payload_template.format(delay=self.SLEEP_DELAY)
-                data = {}
+                payload_data = {}
                 for inp in inputs:
                     if inp["name"] == target_input["name"]:
-                        data[inp["name"]] = (inp.get("value", "") or "test") + payload
+                        payload_data[inp["name"]] = (inp.get("value", "") or "test") + payload
                     elif inp["type"] in ("submit", "button"):
-                        data[inp["name"]] = inp.get("value", "Submit")
+                        payload_data[inp["name"]] = inp.get("value", "Submit")
                     else:
-                        data[inp["name"]] = inp.get("value", "") or "test"
+                        payload_data[inp["name"]] = inp.get("value", "") or "test"
 
-                baseline = self._get_baseline_time(
-                    url, method=method, data=data if method == "POST" else None
-                )
                 if method == "POST":
-                    resp, elapsed = self._timed_request("POST", url, data=data)
+                    resp, elapsed = self._timed_request("POST", url, data=payload_data)
                 else:
-                    resp, elapsed = self._timed_request("GET", url, params=data)
+                    resp, elapsed = self._timed_request("GET", url, params=payload_data)
 
                 if elapsed >= baseline + self.SLEEP_DELAY - 0.5:
                     return {

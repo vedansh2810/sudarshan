@@ -4,7 +4,7 @@ Handles DVWA-specific login and session management for Sudarshan scanner
 """
 
 import os
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from flask import current_app
 
@@ -27,9 +27,11 @@ class DVWAAuth:
         Returns:
             requests.Session object with valid DVWA authentication, or None if login fails
         """
-        session = requests.Session()
-        session.headers.update(
-            {"User-Agent": "Sudarshan-Scanner/1.0 (Security Research)"}
+        session = httpx.Client(
+            verify=False,
+            timeout=httpx.Timeout(10.0, connect=5.0),
+            follow_redirects=True,
+            headers={"User-Agent": "Sudarshan-Scanner/1.0 (Security Research)"},
         )
 
         base_url = base_url.rstrip("/")
@@ -59,19 +61,19 @@ class DVWAAuth:
                 login_data["user_token"] = csrf_token
 
             response = session.post(
-                login_url, data=login_data, timeout=10, allow_redirects=True
+                login_url, data=login_data, timeout=10
             )
 
             # Step 4: Verify login successful
             # Successful login redirects away from login.php
-            if "login.php" not in response.url and response.status_code == 200:
+            if "login.php" not in str(response.url) and response.status_code == 200:
                 print(f"[+] DVWA authentication successful for {base_url}")
                 return session
             else:
                 print(f"[!] DVWA authentication failed (stayed on login page)")
                 return None
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             print(f"[!] Error during DVWA authentication: {e}")
             return None
         except Exception as e:
@@ -132,7 +134,7 @@ class DVWAAuth:
                 print(f"[!] Failed to set DVWA security level")
                 return False
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             print(f"[!] Error setting DVWA security level: {e}")
             return False
         except Exception as e:
@@ -171,11 +173,11 @@ class DVWAAuth:
                     "yes",
                     "YES",
                 )
-            resp = requests.get(
+            resp = httpx.get(
                 url.rstrip("/") + "/login.php",
                 timeout=5,
                 verify=not allow_insecure,
-                allow_redirects=True,
+                follow_redirects=True,
             )
             if resp.status_code == 200:
                 content = resp.text.lower()

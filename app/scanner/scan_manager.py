@@ -11,30 +11,16 @@ import queue
 import time
 import json
 import logging
-import requests as requests_lib
+import httpx
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 from flask import current_app
 
 from app.config import Config
 from app.scanner.crawler import Crawler
-from app.scanner.vulnerabilities.sql_injection import SQLInjectionScanner
-from app.scanner.vulnerabilities.xss import XSSScanner
-from app.scanner.vulnerabilities.csrf import CSRFScanner
-from app.scanner.vulnerabilities.security_headers import SecurityHeadersScanner
-from app.scanner.vulnerabilities.directory_traversal import DirectoryTraversalScanner
-from app.scanner.vulnerabilities.command_injection import CommandInjectionScanner
-from app.scanner.vulnerabilities.idor import IDORScanner, DirectoryListingScanner
-from app.scanner.vulnerabilities.xxe import XXEScanner
-from app.scanner.vulnerabilities.ssrf import SSRFScanner
-from app.scanner.vulnerabilities.open_redirect import OpenRedirectScanner
-from app.scanner.vulnerabilities.cors import CORSScanner
-from app.scanner.vulnerabilities.clickjacking import ClickjackingScanner
-from app.scanner.vulnerabilities.ssti import SSTIScanner
-from app.scanner.vulnerabilities.jwt_attacks import JWTAttackScanner
-from app.scanner.vulnerabilities.broken_auth import BrokenAuthScanner
+from app.scanner.registry import SCANNER_MAP
 from app.scanner.dvwa_auth import DVWAAuth
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
@@ -285,6 +271,7 @@ class ScanManager:
                         "elapsed": int(
                             time.time() - float(state.get(b"start_time", b"0"))
                         ),
+                        "backend_mode": state.get(b"mode", b"celery").decode(),
                     }
             except Exception as e:
                 logger.debug(f"Redis get_status failed: {e}")
@@ -298,6 +285,7 @@ class ScanManager:
                 "total_urls": ctx["total_urls"],
                 "findings": len(ctx["findings"]),
                 "elapsed": int(time.time() - ctx["start_time"]),
+                "backend_mode": "threading",
             }
         # DB fallback (always works)
         scan = Scan.get_by_id(scan_id)
@@ -465,6 +453,16 @@ class ScanManager:
                 "info",
             )
 
+            # Warn user when running in threading fallback (no Redis/Celery)
+            if ctx.get("mode") == "threading":
+                self._emit(
+                    scan_id,
+                    "log",
+                    "[!] Redis unavailable \u2014 running in threading mode (limited concurrency). "
+                    "Start Redis for full Celery-based scanning.",
+                    "warning",
+                )
+
             # Phase 0: Connectivity pre-check
             self._emit(scan_id, "log", "[+] Checking target connectivity...", "info")
             target_reachable = False
@@ -473,11 +471,11 @@ class ScanManager:
             except Exception:
                 allow_insecure = Config.ALLOW_INSECURE_TARGETS
             try:
-                precheck_resp = requests_lib.get(
+                precheck_resp = httpx.get(
                     target_url,
                     timeout=speed_config["timeout"],
                     verify=not allow_insecure,
-                    allow_redirects=True,
+                    follow_redirects=True,
                     headers={"User-Agent": "Sudarshan-Scanner/1.0 (Security Research)"},
                 )
                 target_reachable = True
@@ -487,14 +485,14 @@ class ScanManager:
                     f"[+] Target reachable: HTTP {precheck_resp.status_code} ({len(precheck_resp.text)} bytes)",
                     "success",
                 )
-            except requests_lib.exceptions.Timeout:
+            except httpx.TimeoutException:
                 self._emit(
                     scan_id,
                     "log",
                     f'[!] Target unreachable: Connection timed out after {speed_config["timeout"]}s',
                     "error",
                 )
-            except requests_lib.exceptions.ConnectionError as ce:
+            except httpx.ConnectError as ce:
                 self._emit(
                     scan_id,
                     "log",
@@ -683,9 +681,9 @@ class ScanManager:
                     "[*] AI Reconnaissance: Analyzing target technology stack...",
                     "info",
                 )
-                import requests as _req
+                import httpx as _req
 
-                recon_resp = _req.get(target_url, timeout=10, verify=not allow_insecure)
+                recon_resp = _req.get(target_url, timeout=10, verify=not allow_insecure, follow_redirects=True)
                 recon_result = smart_engine.reconnaissance(target_url, recon_resp)
                 if recon_result:
                     target_context = recon_result
@@ -765,27 +763,7 @@ class ScanManager:
                     "info",
                 )
 
-                scanner_map = {
-                    "sql_injection": (SQLInjectionScanner, "SQL Injection"),
-                    "xss": (XSSScanner, "Cross-Site Scripting"),
-                    "csrf": (CSRFScanner, "CSRF"),
-                    "security_headers": (SecurityHeadersScanner, "Security Headers"),
-                    "directory_traversal": (
-                        DirectoryTraversalScanner,
-                        "Directory Traversal",
-                    ),
-                    "command_injection": (CommandInjectionScanner, "Command Injection"),
-                    "idor": (IDORScanner, "IDOR"),
-                    "directory_listing": (DirectoryListingScanner, "Directory Listing"),
-                    "xxe": (XXEScanner, "XXE Injection"),
-                    "ssrf": (SSRFScanner, "SSRF"),
-                    "open_redirect": (OpenRedirectScanner, "Open Redirect"),
-                    "cors": (CORSScanner, "CORS Misconfiguration"),
-                    "clickjacking": (ClickjackingScanner, "Clickjacking"),
-                    "ssti": (SSTIScanner, "Server-Side Template Injection"),
-                    "jwt_attacks": (JWTAttackScanner, "JWT Vulnerabilities"),
-                    "broken_auth": (BrokenAuthScanner, "Broken Authentication"),
-                }
+                scanner_map = SCANNER_MAP
 
                 selected = ctx["selected_checks"]
                 parallel_scanners = [
@@ -801,9 +779,17 @@ class ScanManager:
                         # Create a fresh session and copy cookies/headers
                         # instead of deepcopy which breaks transport adapters
                         if crawler and crawler.session:
-                            scanner_session = requests_lib.Session()
-                            scanner_session.cookies.update(crawler.session.cookies)
-                            scanner_session.headers.update(crawler.session.headers)
+                            timeout_val = speed_config["timeout"]
+                            crawler_cookies = crawler.session.cookies
+                            crawler_headers = crawler.session.headers
+                            scanner_session = httpx.Client(
+                                verify=False,
+                                timeout=httpx.Timeout(timeout_val, connect=5.0),
+                                follow_redirects=True,
+                                cookies=dict(crawler_cookies),
+                                headers=dict(crawler_headers),
+                                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+                            )
                         else:
                             scanner_session = None
                         scanner = ScannerClass(
@@ -814,6 +800,8 @@ class ScanManager:
                         # Enable ML data collection
                         scanner.collect_ml_data = True
                         scanner.current_scan_id = scan_id
+                        # Pass Flask app so threads can push app_context for DB writes
+                        scanner._flask_app = ctx.get("_app")
                         # Propagate SPA detection flag to scanner
                         scanner.is_spa_target = ctx.get("is_spa", False)
                         if check_name in ("security_headers", "cors", "clickjacking"):
@@ -842,7 +830,25 @@ class ScanManager:
                     for future in as_completed(futures_map):
                         if ctx["stopped"]:
                             break
-                        display_name, findings, error = future.result()
+                        scanner_name = futures_map[future]
+                        try:
+                            display_name, findings, error = future.result(timeout=120)
+                        except TimeoutError:
+                            self._emit(
+                                scan_id,
+                                "log",
+                                f"[-] {scanner_name}: Timed out after 120s — skipping",
+                                "warning",
+                            )
+                            continue
+                        except Exception as exc:
+                            self._emit(
+                                scan_id,
+                                "log",
+                                f"[-] {scanner_name}: Unexpected error: {str(exc)[:80]}",
+                                "warning",
+                            )
+                            continue
 
                         if error:
                             self._emit(
