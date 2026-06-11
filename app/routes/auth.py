@@ -9,6 +9,7 @@ Security hardening (v2.1):
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 import httpx
 from flask import (
@@ -41,9 +42,9 @@ def _verify_supabase_token(access_token):
     # return a lightweight development stub user so the app can run locally
     # without external dependencies. In production this still raises.
     if not supabase_url or not service_key:
-        if current_app.debug:
+        if current_app.debug and os.environ.get("SUDARSHAN_DEV_AUTH", "") == "1":
             logger.warning(
-                "Supabase credentials not set — using development fallback for token verification"
+                "DEV AUTH BYPASS ACTIVE (SUDARSHAN_DEV_AUTH=1) — DO NOT USE IN PRODUCTION"
             )
             # Provide a minimal user object expected by downstream code
             return {"id": "dev-user", "email": "dev@example.com", "user_metadata": {}}
@@ -68,15 +69,24 @@ def _validate_request_origin():
     Supabase JS SDK posts the token), we validate the Origin header manually
     to prevent cross-origin CSRF attacks.
 
-    Returns True if the request is safe (same-origin or no Origin header).
+    Returns True if the request is safe (same-origin).
+    Blocks requests that lack both Origin and Referer headers from
+    browser user-agents, as legitimate browser POSTs always include
+    at least one of these.
     """
     origin = request.headers.get("Origin") or ""
     if not origin:
-        # Requests without Origin header (e.g. same-origin, non-browser clients)
-        # are allowed; Referer can be checked as a fallback
         referer = request.headers.get("Referer") or ""
         if not referer:
-            return True  # No origin info — likely server-to-server or same-origin
+            # Browser-initiated POSTs always include Origin or Referer.
+            # Requests missing both are either non-browser (API tools,
+            # which aren't vulnerable to CSRF) or crafted attacks.
+            # Block if the User-Agent looks like a browser.
+            ua = (request.headers.get("User-Agent") or "").lower()
+            is_browser = any(b in ua for b in ("mozilla", "chrome", "safari", "edge", "opera"))
+            if is_browser:
+                return False  # Browser request missing origin info — suspicious
+            return True  # Non-browser client (curl, httpx, etc.) — allow
         origin = referer
 
     server_origin = request.host_url.rstrip("/")

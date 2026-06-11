@@ -59,6 +59,8 @@ def login_required(f):
                 if request.is_json or request.path.startswith("/api/"):
                     return jsonify({"error": "Session expired"}), 401
                 return redirect(url_for("auth.login"))
+            # Refresh admin flag from DB on every revalidation
+            session["is_admin"] = getattr(user, "is_admin", False)
             session["_last_validated"] = now.isoformat()
 
         return f(*args, **kwargs)

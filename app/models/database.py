@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models and database initialization."""
 
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import CheckConstraint
 from datetime import datetime, timezone
 
 
@@ -50,6 +51,10 @@ class ScanModel(db.Model):
     __table_args__ = (
         db.Index("ix_scans_user_started", "user_id", "started_at"),
         db.Index("ix_scans_status_started", "status", "started_at"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'error', 'stopped', 'paused')",
+            name="ck_scans_valid_status",
+        ),
     )
 
     vulnerabilities = db.relationship(
@@ -92,6 +97,10 @@ class VulnerabilityModel(db.Model):
 
     __table_args__ = (
         db.Index("ix_vulns_scan_severity", "scan_id", "severity"),
+        CheckConstraint(
+            "cvss_score >= 0 AND cvss_score <= 10",
+            name="ck_vulns_cvss_range",
+        ),
     )
 
 

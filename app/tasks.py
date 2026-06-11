@@ -4,13 +4,14 @@ import time
 import json
 import logging
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 from app.celery_app import celery
 from app.config import Config
 from app.scanner.crawler import Crawler
 from app.scanner.registry import SCANNER_MAP
+from app.scanner.vulnerabilities.security_headers import SecurityHeadersScanner
 from app.scanner.dvwa_auth import DVWAAuth
 from app.ai.smart_engine import get_smart_engine
 from app.models.scan import Scan
@@ -22,6 +23,31 @@ from app.monitoring.metrics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_llm(text):
+    """Strip potential prompt injection patterns from target response content.
+
+    Removes common prompt injection phrases to prevent scan targets
+    from manipulating AI verification results.
+    """
+    if not text:
+        return ""
+    import re
+    patterns = [
+        r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|context)",
+        r"(?i)disregard\s+(all\s+)?(previous|prior|above)",
+        r"(?i)you\s+are\s+now\s+a",
+        r"(?i)new\s+instructions?:",
+        r"(?i)system\s*:\s*",
+        r"(?i)forget\s+(everything|all)",
+        r"(?i)do\s+not\s+report\s+(this|any)",
+        r"(?i)mark\s+(this\s+)?(as\s+)?safe",
+        r"(?i)this\s+is\s+not\s+a\s+vulnerability",
+    ]
+    for pat in patterns:
+        text = re.sub(pat, "[PROMPT_INJECTION_FILTERED]", text)
+    return text
 
 
 def _get_redis():
@@ -42,7 +68,7 @@ def _emit_redis(redis_client, scan_id, event_type, data, log_level="info"):
         "type": event_type,
         "data": data,
         "level": log_level,
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
+        "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
     }
     serialized = json.dumps(msg)
     channel = f"scan:{scan_id}:events"
@@ -428,7 +454,7 @@ def run_scan_task(
                             "content_length": finding.get("content_length", "N/A"),
                             "response_time": finding.get("response_time", "N/A"),
                             "reflection_detected": finding.get("payload_reflected", "N/A"),
-                            "body_preview": finding.get("response_data", "")[:500],
+                            "body_preview": _sanitize_for_llm(finding.get("response_data", "")[:500]),
                         }
 
                         verdict, confidence, reasoning = smart_engine.verify_finding(

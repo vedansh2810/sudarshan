@@ -8,38 +8,24 @@ from app.models.organization import Organization
 logger = logging.getLogger(__name__)
 
 
-def user_can_access_scan(scan, user_id):
+def user_can_access_scan(scan, user_id, require_write=False):
     """Non-aborting version: returns True/False.
 
     Args:
         scan: scan dict (must include user_id and org_id keys)
         user_id: the user to check access for
+        require_write: if True, requires 'member' or higher role (not 'viewer')
     """
     if not scan or not user_id:
         return False
     if scan["user_id"] == user_id:
         return True
     scan_org_id = scan.get("org_id")
-    if scan_org_id and Organization.user_has_access(scan_org_id, user_id):
-        return True
+    if scan_org_id:
+        if require_write:
+            return Organization.user_has_write_access(scan_org_id, user_id)
+        return Organization.user_has_access(scan_org_id, user_id)
     return False
-
-
-def user_can_access_vulnerability(vuln_id, user_id):
-    """Check if a user owns the scan that contains this vulnerability.
-
-    Performs a two-step lookup: vulnerability → scan → ownership check.
-    Returns True if the user owns the parent scan or has org access.
-    """
-    from app.models.vulnerability import Vulnerability
-
-    vuln = Vulnerability.get_by_id(vuln_id)
-    if not vuln:
-        return False
-    from app.models.scan import Scan
-
-    scan = Scan.get_by_id(vuln["scan_id"])
-    return user_can_access_scan(scan, user_id)
 
 
 def admin_required(f):

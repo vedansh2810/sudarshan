@@ -304,20 +304,6 @@ def _replace_env_value(content, key, value):
         new_content += f'{replacement}\n'
     return new_content
 
-def generate_secret_key():
-    """Auto-generate SECRET_KEY if it's still the default."""
-    if not ENV_FILE.exists():
-        return
-
-    content = ENV_FILE.read_text(encoding="utf-8")
-    if "change-me-to-a-random-secret-key" in content or "SECRET_KEY=change-me" in content:
-        import secrets
-        new_key = secrets.token_hex(32)
-        content = content.replace("change-me-to-a-random-secret-key", new_key)
-        content = content.replace("SECRET_KEY=change-me", f"SECRET_KEY={new_key}")
-        ENV_FILE.write_text(content, encoding="utf-8")
-        log_ok("SECRET_KEY auto-generated (secure random)")
-
 def create_data_dirs():
     """Create required data directories."""
     log("Checking data directories...")
@@ -409,7 +395,6 @@ def do_setup(force=False):
     setup_venv()
     install_python_deps()
     setup_env_file()
-    generate_secret_key()
     create_data_dirs()
     setup_tailwind()
     mark_setup_complete()

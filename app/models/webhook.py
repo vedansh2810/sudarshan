@@ -6,6 +6,9 @@ Sends HTTP POST to registered URLs when scan events occur.
 import json
 import logging
 import threading
+import hmac as hmac_lib
+import hashlib
+import os
 import httpx
 from datetime import datetime, timezone
 from flask import current_app
@@ -56,6 +59,12 @@ class Webhook(db.Model):
         on_scan_error=True,
     ):
         """Register a new webhook."""
+        # Validate URL at registration time (SSRF protection)
+        from app.utils.url_safety import is_safe_url
+        is_safe, reason = is_safe_url(url)
+        if not is_safe:
+            raise ValueError(f"Webhook URL blocked for security: {reason}")
+
         webhook = cls(
             user_id=user_id,
             name=name,
@@ -127,6 +136,20 @@ class Webhook(db.Model):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "data": data,
         }
+        # Generate HMAC-SHA256 signature for webhook payload verification
+        payload_bytes = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        try:
+            secret = ""
+            if app:
+                with app.app_context():
+                    secret = current_app.config.get("SECRET_KEY", "")
+            if not secret:
+                secret = os.environ.get("SECRET_KEY", "")
+            signature = hmac_lib.new(
+                secret.encode("utf-8"), payload_bytes, hashlib.sha256
+            ).hexdigest()
+        except Exception:
+            signature = ""
         try:
             resp = httpx.post(
                 url,
@@ -134,6 +157,7 @@ class Webhook(db.Model):
                 headers={
                     "Content-Type": "application/json",
                     "User-Agent": "Sudarshan-Webhook/1.0",
+                    "X-Sudarshan-Signature": f"sha256={signature}",
                 },
                 timeout=10.0,
             )

@@ -51,18 +51,43 @@ _BLOCKED_HOSTNAMES = {
 }
 
 
+def resolve_and_validate(hostname):
+    """Resolve hostname and validate the resolved IP is safe.
+
+    Returns (ip_string, is_safe, reason).
+    """
+    try:
+        results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        if not results:
+            return None, False, f"DNS resolution returned no results for: {hostname}"
+        ip_str = results[0][4][0]
+        ip = ipaddress.ip_address(ip_str)
+        for blocked in _BLOCKED_RANGES:
+            if ip in blocked:
+                return ip_str, False, f"Resolved to blocked IP: {ip_str}"
+        return ip_str, True, None
+    except socket.gaierror:
+        return None, False, f"DNS resolution failed for: {hostname}"
+    except Exception as e:
+        return None, False, f"IP validation error: {e}"
+
+
 def is_safe_url(url: str) -> tuple[bool, str]:
     """Validate that a URL does not resolve to a blocked IP range.
 
     Returns:
-        (is_safe, reason) — True if safe, False with human-readable reason.
+        (is_safe, reason) — True with empty reason if safe,
+        False with human-readable reason if blocked.
+
+    The resolved IP can be obtained separately via get_pinned_ip()
+    to prevent DNS rebinding after validation.
 
     Algorithm:
         1. Parse the URL and extract the hostname.
         2. Reject known cloud metadata hostnames.
-        3. Resolve the hostname to IP addresses via socket.getaddrinfo().
-        4. Check every resolved IP against the blocked ranges.
-        5. Reject if ANY resolved IP falls in a blocked range.
+        3. Resolve the hostname via resolve_and_validate().
+        4. Check the resolved IP against the blocked ranges.
+        5. Reject if the resolved IP falls in a blocked range.
     """
     try:
         parsed = urlparse(url)
@@ -78,30 +103,14 @@ def is_safe_url(url: str) -> tuple[bool, str]:
         if _allow_local_targets():
             return True, ""
 
-        # Resolve hostname to IPs
-        try:
-            addr_infos = socket.getaddrinfo(
-                hostname, parsed.port or 80, proto=socket.IPPROTO_TCP
-            )
-        except socket.gaierror:
-            return False, f'Cannot resolve hostname "{hostname}"'
-
-        for family, _type, _proto, _canonname, sockaddr in addr_infos:
-            ip_str = sockaddr[0]
-            try:
-                ip = ipaddress.ip_address(ip_str)
-            except ValueError:
-                continue
-
-            for blocked_net in _BLOCKED_RANGES:
-                if ip in blocked_net:
-                    return False, (
-                        f'Hostname "{hostname}" resolves to {ip_str} '
-                        f"which is in blocked range {blocked_net}"
-                    )
+        # Resolve and validate hostname via single code path
+        ip_str, is_safe, reason = resolve_and_validate(hostname)
+        if not is_safe:
+            return False, reason or f'Hostname "{hostname}" failed validation'
 
         return True, ""
 
     except Exception as e:
         logger.warning(f"URL safety check error: {e}")
         return False, f"URL validation error: {e}"
+

@@ -114,6 +114,20 @@ def create_app(config=None):
     # Initialize extensions (after DB probe so SQLite fallback gets correct options)
     db.init_app(app)
     migrate.init_app(app, db)
+
+    # Enable foreign key enforcement for SQLite (not enabled by default)
+    if "sqlite" in app.config.get("SQLALCHEMY_DATABASE_URI", ""):
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+        import sqlite3
+
+        @event.listens_for(Engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, connection_record):
+            if isinstance(dbapi_connection, sqlite3.Connection):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
     csrf.init_app(app)
 
     # Set rate limiter storage: Redis in production, memory in development

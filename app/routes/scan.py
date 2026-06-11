@@ -77,6 +77,14 @@ def new_scan():
         if org_id:
             from app.models.organization import Organization
 
+            # Verify user is still a member of this organization
+            if not Organization.user_has_access(org_id, session["user_id"]):
+                return render_template(
+                    "scan/new.html",
+                    error="Organization access denied.",
+                    checks=Config.VULNERABILITY_CHECKS,
+                )
+
             allowed, reason = Organization.check_scan_quota(org_id)
             if not allowed:
                 return render_template(
@@ -101,6 +109,7 @@ def new_scan():
             crawl_depth=crawl_depth,
             selected_checks=selected_checks,
             dvwa_security=dvwa_security,
+            user_id=session["user_id"],
         )
 
         return redirect(url_for("scan.progress", scan_id=scan_id))

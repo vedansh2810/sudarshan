@@ -12,6 +12,43 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 
+def _verify_model_integrity(model_path):
+    """Verify model file integrity via SHA-256 checksum.
+
+    Looks for a .sha256 sidecar file. If no checksum file exists,
+    logs a warning and allows loading (backward compat with legacy models).
+    Returns True if safe to load, False if integrity check fails.
+    """
+    import hashlib
+    checksum_path = model_path + ".sha256"
+
+    if not os.path.exists(checksum_path):
+        logger.warning(
+            f"No checksum file for {model_path} — loading without verification. "
+            "Generate one with: python -m app.ml.sign_model <path>"
+        )
+        return True  # Allow legacy models without checksums
+
+    with open(checksum_path, "r") as f:
+        expected_hash = f.read().strip()
+
+    sha256 = hashlib.sha256()
+    with open(model_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    actual_hash = sha256.hexdigest()
+
+    if actual_hash != expected_hash:
+        logger.error(
+            f"Model integrity check FAILED for {model_path}! "
+            f"Expected: {expected_hash[:16]}..., Got: {actual_hash[:16]}..."
+        )
+        return False
+
+    logger.info(f"Model integrity verified: {model_path}")
+    return True
+
+
 class FalsePositiveClassifier:
     """ML classifier to predict whether a vulnerability finding is a true positive.
 
@@ -106,6 +143,11 @@ class FalsePositiveClassifier:
         X, y = self.prepare_data_from_db(vulnerability_type)
         if X is None:
             return None
+
+        # Check for suspicious label distribution (poisoning detection)
+        dist_ok, dist_msg = self._check_label_distribution(y.tolist())
+        if not dist_ok:
+            logger.warning(f"ML training: proceeding despite suspicious distribution — {dist_msg}")
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
@@ -210,6 +252,16 @@ class FalsePositiveClassifier:
             model_path,
         )
 
+        # Auto-generate SHA-256 checksum after saving model
+        import hashlib
+        sha256 = hashlib.sha256()
+        with open(model_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha256.update(chunk)
+        with open(model_path + ".sha256", "w") as f:
+            f.write(sha256.hexdigest())
+        logger.info(f"Model checksum written to {model_path}.sha256")
+
         self.model_name = "false_positive_classifier"
         self.model_version = version
         logger.info(f"Model saved to {model_path}")
@@ -234,6 +286,10 @@ class FalsePositiveClassifier:
             logger.error(f"Model file not found: {model_path}")
             return False
 
+        if not _verify_model_integrity(model_path):
+            logger.error(f"Refusing to load model {model_path} — integrity check failed")
+            return False
+
         try:
             data = joblib.load(model_path)
             self.rf_model = data["rf_model"]
@@ -245,6 +301,25 @@ class FalsePositiveClassifier:
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             return False
+
+    def _check_label_distribution(self, labels):
+        """Check for suspicious label distribution that may indicate poisoning.
+        Returns (is_ok, message)."""
+        from collections import Counter
+        counts = Counter(labels)
+        total = len(labels)
+        if total < 20:
+            return True, f"Too few samples ({total}) for distribution check"
+
+        max_class_ratio = max(counts.values()) / total
+        if max_class_ratio > 0.95:
+            logger.warning(
+                f"ML training: Suspicious label distribution — "
+                f"{max_class_ratio:.0%} of labels are the same class. "
+                f"Distribution: {dict(counts)}"
+            )
+            return False, f"Label distribution too skewed: {dict(counts)}"
+        return True, "OK"
 
     def predict(self, features_dict):
         """Predict if a finding is a true positive.

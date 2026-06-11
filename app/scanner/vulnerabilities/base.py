@@ -8,10 +8,25 @@ logger = logging.getLogger(__name__)
 
 
 class BaseScanner:
+
+    @staticmethod
+    def _validate_request_url(request):
+        """httpx event hook: validate every request URL (including redirects) against SSRF blocklist."""
+        from app.utils.url_safety import is_safe_url
+        url_str = str(request.url)
+        result = is_safe_url(url_str)
+        is_safe = result[0]
+        reason = result[1]
+        if not is_safe:
+            raise httpx.RequestError(f"Request blocked (SSRF protection): {reason}", request=request)
+
     def __init__(self, session=None, timeout=8, delay=0.05):
         # Flask app reference — set by ScanManager so background threads
         # can push app_context() for DB operations (ML data recording).
         self._flask_app = None
+
+        # Response size limit (10MB) to guard against OOM
+        self._max_response_bytes = 10 * 1024 * 1024  # 10MB limit
 
         if session is not None:
             # Reuse an existing httpx.Client (e.g., from crawler with auth cookies)
@@ -26,6 +41,8 @@ class BaseScanner:
                     max_keepalive_connections=10,
                 ),
                 headers={"User-Agent": "Sudarshan-Scanner/1.0"},
+                event_hooks={"request": [BaseScanner._validate_request_url]},
+                max_redirects=10,
             )
         self.timeout = timeout
         self.delay = delay
@@ -73,7 +90,7 @@ class BaseScanner:
             text,
             flags=re.I,
         )
-        return hashlib.md5(text.encode("utf-8", errors="ignore")).hexdigest()
+        return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
 
     def _track_response(self, url, response):
         """Track response hash for a URL. Call this for each test request."""
@@ -118,9 +135,22 @@ class BaseScanner:
             self._last_request_time = time.time()
             response.elapsed_time = time.time() - start
 
+            # Guard against huge responses that could OOM the worker
+            content_length = response.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > self._max_response_bytes:
+                        logger.warning(f"Response from {url} too large ({content_length} bytes) — skipping")
+                        return None
+                except (ValueError, TypeError):
+                    pass
+
             # ── Rate-limit detection (429 Too Many Requests) ─────────
             if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", 5))
+                try:
+                    retry_after = int(response.headers.get("Retry-After", 5))
+                except (ValueError, TypeError):
+                    retry_after = 5
                 retry_after = min(retry_after, 30)  # Cap at 30 seconds
                 logger.warning(
                     f"Rate limited on {url} — backing off {retry_after}s"

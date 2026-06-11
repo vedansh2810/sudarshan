@@ -14,13 +14,14 @@ import logging
 import httpx
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs
 from flask import current_app
 
 from app.config import Config
 from app.scanner.crawler import Crawler
 from app.scanner.registry import SCANNER_MAP
+from app.scanner.vulnerabilities.security_headers import SecurityHeadersScanner
 from app.scanner.dvwa_auth import DVWAAuth
 from app.models.scan import Scan
 from app.models.vulnerability import Vulnerability
@@ -93,6 +94,7 @@ class ScanManager:
         crawl_depth,
         selected_checks=None,
         dvwa_security="low",
+        user_id=None,
     ):
         if scan_id in self.active_scans:
             return False
@@ -148,6 +150,7 @@ class ScanManager:
                 "total_urls": 0,
                 "dvwa_security": dvwa_security,
                 "mode": "threading",
+                "user_id": user_id,
             }
             ctx["pause_event"].set()
             self.active_scans[scan_id] = ctx
@@ -350,7 +353,7 @@ class ScanManager:
             "type": event_type,
             "data": data,
             "level": log_level,
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
         }
         serialized = f"data: {json.dumps(msg)}\n\n"
 

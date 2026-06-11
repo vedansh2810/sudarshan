@@ -207,6 +207,17 @@ class Organization:
         )
 
     @staticmethod
+    def user_has_write_access(org_id, user_id):
+        """Check if user has write access (member, admin, or owner role).
+        Viewers can read but not create/delete/modify scans."""
+        membership = OrgMembershipModel.query.filter_by(
+            org_id=org_id, user_id=user_id
+        ).first()
+        if not membership:
+            return False
+        return membership.role in ("owner", "admin", "member")
+
+    @staticmethod
     def _to_dict(org):
         if org is None:
             return None

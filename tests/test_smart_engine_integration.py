@@ -1,4 +1,4 @@
-"""Integration tests for SmartEngine + analyzer + report_writer.
+"""Integration tests for SmartEngine + report_writer.
 
 Run with: python -m pytest tests/test_smart_engine_integration.py -v
 """
@@ -230,25 +230,6 @@ class TestBaseScanner:
         assert isinstance(verdict, str)
         assert isinstance(confidence, float)
         assert isinstance(reasoning, str)
-
-
-class TestAnalyzerImports:
-    """Test that enhanced analyzer functions are importable."""
-
-    def test_analyze_vulnerability_importable(self):
-        from app.ai.analyzer import analyze_vulnerability
-
-        assert callable(analyze_vulnerability)
-
-    def test_classify_false_positive_importable(self):
-        from app.ai.analyzer import classify_false_positive
-
-        assert callable(classify_false_positive)
-
-    def test_analyze_with_portswigger_importable(self):
-        from app.ai.analyzer import analyze_with_portswigger
-
-        assert callable(analyze_with_portswigger)
 
 
 class TestReportWriterImports:

@@ -99,12 +99,6 @@ class SecurityLog:
               ip=ip, method=method, path=path,
               status_code=status_code, error=error, user_id=user_id)
 
-    @staticmethod
-    def api_unauthorized(ip, method, path, reason='missing_auth'):
-        """Log unauthorized API access attempt."""
-        _emit('warning', 'api_unauthorized',
-              ip=ip, method=method, path=path, reason=reason)
-
     # ── Suspicious activity ──────────────────────────────────────────────
 
     @staticmethod
@@ -128,12 +122,6 @@ class SecurityLog:
         """Log 403 access denial."""
         _emit('warning', 'access_denied',
               ip=ip, path=path, user_id=user_id, reason=reason)
-
-    @staticmethod
-    def invalid_input(ip, path, reason, user_id=None):
-        """Log malformed or suspicious input."""
-        _emit('warning', 'invalid_input',
-              ip=ip, path=path, reason=reason, user_id=user_id)
 
 
 # Singleton instance

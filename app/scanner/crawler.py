@@ -671,7 +671,7 @@ class Crawler:
         unique_points = []
         for point in self.injectable_points:
             if point.get("type") == "form":
-                key = f"form:{point.get('url')}:{point.get('method')}:{','.join(i['name'] for i in point.get('inputs', []))}"
+                key = f"form:{point.get('action', point.get('url'))}:{point.get('method')}:{','.join(i['name'] for i in point.get('inputs', []))}"
             else:
                 key = f"param:{point.get('url')}:{point.get('name')}"
             if key not in seen_points:

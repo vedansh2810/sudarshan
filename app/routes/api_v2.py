@@ -64,10 +64,9 @@ def _scan_to_dict(scan_orm):
 
 
 @api_v2_bp.route("/auth/session")
+@login_required
 def auth_session():
     """Return current session info or 401."""
-    if "user_id" not in session:
-        return _json_error("Not authenticated", 401)
     return jsonify(
         {
             "user_id": session["user_id"],
@@ -175,7 +174,10 @@ def list_scans():
 
     query = Scan.for_user_query(user_id)
     if search:
-        query = query.filter(ScanModel.target_url.ilike(f"%{search}%"))
+        # Escape SQL LIKE wildcards to prevent wildcard injection / DoS
+        safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        safe_search = safe_search[:200]  # Enforce max length
+        query = query.filter(ScanModel.target_url.ilike(f"%{safe_search}%", escape="\\"))
     if date_from:
         query = query.filter(func.date(ScanModel.started_at) >= date_from)
     if date_to:
@@ -247,6 +249,10 @@ def create_scan():
     if org_id:
         from app.models.organization import Organization
 
+        # Verify user is a member of this organization
+        if not Organization.user_has_access(org_id, session["user_id"]):
+            return _json_error("You are not a member of this organization.", 403)
+
         allowed, reason = Organization.check_scan_quota(org_id)
         if not allowed:
             return _json_error(reason, 403)
@@ -269,6 +275,7 @@ def create_scan():
         crawl_depth=crawl_depth,
         selected_checks=selected_checks,
         dvwa_security=dvwa_security,
+        user_id=session["user_id"],
     )
 
     return jsonify({"scan_id": scan_id}), 201

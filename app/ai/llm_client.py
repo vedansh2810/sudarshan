@@ -101,7 +101,7 @@ class ResponseCache:
 
     def _key(self, prompt, context):
         raw = f"{prompt}::{context or ''}"
-        return hashlib.md5(raw.encode("utf-8", errors="ignore")).hexdigest()
+        return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
 
     def get(self, prompt, context=None):
         key = self._key(prompt, context)
