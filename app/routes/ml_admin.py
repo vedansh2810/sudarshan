@@ -65,8 +65,8 @@ def stats():
 
 
 @ml_admin_bp.route("/ml/export")
-@limiter.limit("10 per hour")
 @admin_required
+@limiter.limit("10 per hour")
 def export_data():
     """Export labeled data as JSON."""
     vuln_type = request.args.get("type")
@@ -204,8 +204,8 @@ def label_vulnerability(vuln_id):
 
 
 @ml_admin_bp.route("/ml/retrain", methods=["POST"])
-@limiter.limit("3 per hour")
 @admin_required
+@limiter.limit("3 per hour")
 def retrain_model():
     """Trigger ML classifier retraining from labeled data."""
     try:

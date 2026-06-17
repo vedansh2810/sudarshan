@@ -23,12 +23,15 @@ def init_celery(app):
         worker_prefetch_multiplier=1,
     )
 
-    class ContextTask(celery.Task):
-        """Ensure every task runs inside the Flask app context."""
+    # Guard against re-binding on repeated init_celery() calls (e.g. testing)
+    if not getattr(celery, '_flask_app_bound', False):
+        class ContextTask(celery.Task):
+            """Ensure every task runs inside the Flask app context."""
 
-        def __call__(self, *args, **kwargs):
-            with app.app_context():
-                return self.run(*args, **kwargs)
+            def __call__(self, *args, **kwargs):
+                with app.app_context():
+                    return super().__call__(*args, **kwargs)
 
-    celery.Task = ContextTask
+        celery.Task = ContextTask
+        celery._flask_app_bound = True
     return celery

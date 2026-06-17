@@ -17,6 +17,7 @@ import json
 import logging
 from datetime import datetime
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 import io
 
 logger = logging.getLogger(__name__)
@@ -33,14 +34,20 @@ def view(scan_id):
     severity_filter = request.args.get("severity", "all")
     type_filter = request.args.get("type", "all")
 
-    all_vulns = Vulnerability.get_by_scan(scan_id)
-    all_types = list(set(v["vuln_type"] for v in all_vulns))
+    # Use DB-level filtering to avoid loading all vulns into memory
+    filter_severity = severity_filter if severity_filter != "all" else None
+    filter_type = type_filter if type_filter != "all" else None
+    vulns = Vulnerability.get_by_scan(scan_id, severity=filter_severity, vuln_type=filter_type)
 
-    vulns = all_vulns
-    if severity_filter != "all":
-        vulns = [v for v in vulns if v["severity"] == severity_filter]
-    if type_filter != "all":
-        vulns = [v for v in vulns if v["vuln_type"] == type_filter]
+    # Get distinct types via lightweight DB query for filter dropdown
+    from app.models.database import db, VulnerabilityModel
+    all_types = [
+        row[0] for row in
+        db.session.query(VulnerabilityModel.vuln_type)
+        .filter_by(scan_id=scan_id)
+        .distinct()
+        .all()
+    ]
 
     # Parse AI data for template
     for v in vulns:
@@ -189,14 +196,15 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
     pdf.set_text_color(0, 212, 170)
     pdf.set_font("Helvetica", "B", 24)
     pdf.set_y(12)
-    pdf.cell(0, 10, "SUDARSHAN", ln=True, align="C")
+    pdf.cell(0, 10, "SUDARSHAN", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(100, 116, 139)
     pdf.cell(
         0,
         6,
         "Web Vulnerability Scanner  |  Security Assessment Report",
-        ln=True,
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
         align="C",
     )
     score = _safe(s.get("score", "?"))
@@ -210,14 +218,14 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
     }
     sc = score_colors.get(score, (148, 163, 184))
     pdf.set_text_color(*sc)
-    pdf.cell(0, 18, score, ln=True, align="C")
+    pdf.cell(0, 18, score, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
 
     pdf.set_y(55)
 
     # ── 1. Executive Summary ──
     pdf.set_text_color(30, 30, 30)
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "1. Executive Summary", ln=True)
+    pdf.cell(0, 10, "1. Executive Summary", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(3)
@@ -260,7 +268,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
     # ── 2. Target Information ──
     pdf.set_text_color(30, 30, 30)
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "2. Target Information", ln=True)
+    pdf.cell(0, 10, "2. Target Information", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(3)
@@ -284,14 +292,14 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
         pdf.cell(40, 6, label, border="B")
         pdf.set_text_color(30, 30, 30)
         pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(0, 6, val, border="B", ln=True)
+        pdf.cell(0, 6, val, border="B", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font("Helvetica", "", 9)
     pdf.ln(5)
 
     # ── 3. Vulnerability Summary Table ──
     pdf.set_text_color(30, 30, 30)
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "3. Vulnerability Summary", ln=True)
+    pdf.cell(0, 10, "3. Vulnerability Summary", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(3)
@@ -336,13 +344,13 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
     else:
         pdf.set_font("Helvetica", "I", 10)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 8, "No vulnerabilities found.", ln=True)
+        pdf.cell(0, 8, "No vulnerabilities found.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(5)
 
     # ── 4. Detailed Findings ──
     pdf.set_text_color(30, 30, 30)
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "4. Detailed Findings", ln=True)
+    pdf.cell(0, 10, "4. Detailed Findings", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(3)
@@ -389,7 +397,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
             pdf.set_x(lm)
             pdf.set_text_color(80, 80, 80)
             pdf.set_font("Helvetica", "B", 9)
-            pdf.cell(full_w, 6, "Description:", ln=True)
+            pdf.cell(full_w, 6, "Description:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(lm)
             pdf.set_font("Helvetica", "", 8)
             pdf.multi_cell(full_w, 4, _safe(v["description"])[:500])
@@ -399,7 +407,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
             pdf.set_x(lm)
             pdf.set_text_color(180, 120, 0)
             pdf.set_font("Helvetica", "B", 9)
-            pdf.cell(full_w, 6, "Impact:", ln=True)
+            pdf.cell(full_w, 6, "Impact:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(lm)
             pdf.set_font("Helvetica", "", 8)
             pdf.multi_cell(full_w, 4, _safe(v["impact"])[:500])
@@ -409,7 +417,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
             pdf.set_x(lm)
             pdf.set_text_color(60, 60, 60)
             pdf.set_font("Helvetica", "B", 9)
-            pdf.cell(full_w, 6, "Proof of Concept:", ln=True)
+            pdf.cell(full_w, 6, "Proof of Concept:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(lm)
             pdf.set_font("Courier", "", 7)
             pdf.set_fill_color(245, 245, 250)
@@ -420,7 +428,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
             pdf.set_x(lm)
             pdf.set_text_color(22, 163, 74)
             pdf.set_font("Helvetica", "B", 9)
-            pdf.cell(full_w, 6, "Remediation:", ln=True)
+            pdf.cell(full_w, 6, "Remediation:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(lm)
             pdf.set_font("Helvetica", "", 8)
             pdf.multi_cell(full_w, 4, _safe(v["remediation"])[:500])
@@ -433,7 +441,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
             pdf.set_x(lm)
             pdf.set_text_color(0, 150, 200)
             pdf.set_font("Helvetica", "B", 9)
-            pdf.cell(full_w, 6, "AI Attack Narrative:", ln=True)
+            pdf.cell(full_w, 6, "AI Attack Narrative:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(lm)
             pdf.set_font("Helvetica", "", 8)
             pdf.set_text_color(80, 80, 80)
@@ -449,7 +457,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
             fp_text = "LIKELY FALSE POSITIVE"
             if fp_conf is not None:
                 fp_text += f" (confidence: {fp_conf:.0%})"
-            pdf.cell(full_w, 6, fp_text, fill=True, ln=True, align="C")
+            pdf.cell(full_w, 6, fp_text, fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
             pdf.set_text_color(30, 30, 30)
 
         pdf.ln(4)
@@ -462,7 +470,7 @@ def _generate_pdf_report(scan, vulns, ai_summary=None):
         pdf.add_page()
     pdf.set_text_color(30, 30, 30)
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "5. Conclusion & Recommendations", ln=True)
+    pdf.cell(0, 10, "5. Conclusion & Recommendations", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(3)

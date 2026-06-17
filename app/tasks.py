@@ -24,6 +24,20 @@ from app.monitoring.metrics import (
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled prompt injection patterns for _sanitize_for_llm()
+import re
+_INJECTION_PATTERNS = [re.compile(pat) for pat in [
+    r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|context)",
+    r"(?i)disregard\s+(all\s+)?(previous|prior|above)",
+    r"(?i)you\s+are\s+now\s+a",
+    r"(?i)new\s+instructions?:",
+    r"(?i)system\s*:\s*",
+    r"(?i)forget\s+(everything|all)",
+    r"(?i)do\s+not\s+report\s+(this|any)",
+    r"(?i)mark\s+(this\s+)?(as\s+)?safe",
+    r"(?i)this\s+is\s+not\s+a\s+vulnerability",
+]]
+
 
 def _sanitize_for_llm(text):
     """Strip potential prompt injection patterns from target response content.
@@ -33,20 +47,8 @@ def _sanitize_for_llm(text):
     """
     if not text:
         return ""
-    import re
-    patterns = [
-        r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|context)",
-        r"(?i)disregard\s+(all\s+)?(previous|prior|above)",
-        r"(?i)you\s+are\s+now\s+a",
-        r"(?i)new\s+instructions?:",
-        r"(?i)system\s*:\s*",
-        r"(?i)forget\s+(everything|all)",
-        r"(?i)do\s+not\s+report\s+(this|any)",
-        r"(?i)mark\s+(this\s+)?(as\s+)?safe",
-        r"(?i)this\s+is\s+not\s+a\s+vulnerability",
-    ]
-    for pat in patterns:
-        text = re.sub(pat, "[PROMPT_INJECTION_FILTERED]", text)
+    for pat in _INJECTION_PATTERNS:
+        text = pat.sub("[PROMPT_INJECTION_FILTERED]", text)
     return text
 
 
@@ -68,7 +70,7 @@ def _emit_redis(redis_client, scan_id, event_type, data, log_level="info"):
         "type": event_type,
         "data": data,
         "level": log_level,
-        "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     serialized = json.dumps(msg)
     channel = f"scan:{scan_id}:events"
@@ -152,13 +154,18 @@ def run_scan_task(
 
     def wait_if_paused():
         """Block while paused, return True if stopped during pause."""
+        MAX_PAUSE_SECONDS = 1800  # 30 minutes
+        pause_start = time.time()
         while True:
             ctrl = _check_control(redis_client, scan_id)
             if ctrl == "stopped":
                 return True
             if ctrl != "paused":
                 return False
-            time.sleep(0.5)
+            if time.time() - pause_start > MAX_PAUSE_SECONDS:
+                emit("log", "[-] Auto-resuming after 30min pause timeout", "warning")
+                return False
+            time.sleep(2)
 
     try:
         Scan.update_status(scan_id, "running")
@@ -255,7 +262,8 @@ def run_scan_task(
             smart_engine = get_smart_engine()
             emit("log", "[*] AI Reconnaissance: Analyzing target...", "info")
             recon_resp = httpx.get(
-                target_url, timeout=speed_config["timeout"], verify=False, follow_redirects=True
+                target_url, timeout=speed_config["timeout"],
+                verify=not Config.ALLOW_INSECURE_TARGETS, follow_redirects=True
             )
             recon_result = smart_engine.reconnaissance(target_url, recon_resp)
             if recon_result:
@@ -288,6 +296,7 @@ def run_scan_task(
             def run_scanner(check_name, ScannerClass, display_name):
                 if is_stopped():
                     return display_name, [], None
+                scanner_session = None
                 try:
                     # Create a fresh session and copy cookies/headers
                     # instead of deepcopy which breaks transport adapters
@@ -296,15 +305,13 @@ def run_scan_task(
                         crawler_cookies = crawler.session.cookies
                         crawler_headers = crawler.session.headers
                         scanner_session = httpx.Client(
-                            verify=False,
+                            verify=not Config.ALLOW_INSECURE_TARGETS,
                             timeout=httpx.Timeout(timeout_val, connect=5.0),
                             follow_redirects=True,
                             cookies=dict(crawler_cookies),
                             headers=dict(crawler_headers),
                             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
                         )
-                    else:
-                        scanner_session = None
                     scanner = ScannerClass(
                         session=scanner_session,
                         timeout=speed_config["timeout"],
@@ -318,6 +325,9 @@ def run_scan_task(
                     return display_name, results, None
                 except Exception as e:
                     return display_name, [], str(e)
+                finally:
+                    if scanner_session:
+                        scanner_session.close()
 
             max_workers = min(len(parallel_scanners), speed_config.get("threads", 5))
 
@@ -512,6 +522,8 @@ def _finalize(
     medium = sum(1 for f in findings if f.get("severity") == "medium")
     low = sum(1 for f in findings if f.get("severity") in ("low", "info"))
 
+    # Pass status atomically to avoid race condition between two commits
+    final_status = "stopped" if stopped else "completed"
     Scan.complete(
         scan_id=scan_id,
         score=score,
@@ -521,10 +533,8 @@ def _finalize(
         high=high,
         medium=medium,
         low=low,
+        status=final_status,
     )
-
-    if stopped:
-        Scan.update_status(scan_id, "stopped")
 
     status = "stopped" if stopped else "completed"
     track_scan_completed(duration, status)

@@ -1,7 +1,7 @@
 /* ====================================================================
    SUDARSHAN — Custom Design System CSS
    Extracted from inline <style> for cacheability & performance.
-   Tailwind CDN still handles utility classes.
+   Pre-built Tailwind CSS handles utility classes.
    ==================================================================== */
 
 /* ===== WCAG AA Contrast Fix (#18) ===== */
@@ -24,6 +24,8 @@ body {
 ::-webkit-scrollbar-track { background: #060611; }
 ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #334155; }
+/* Firefox scrollbar */
+html { scrollbar-width: thin; scrollbar-color: #1e293b #060611; }
 
 /* ===== Glass & Neon ===== */
 .glass-card {

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}SUDARSHAN — AI Web Vulnerability Scanner{% endblock %}
+{% block title %}SUDARSHAN{% endblock %}
 
 {% block body %}
-<div class="min-h-screen font-display" style="background:#060611;background-image:radial-gradient(circle at 20% 50%,rgba(0,229,255,0.04) 0%,transparent 50%),radial-gradient(circle at 80% 20%,rgba(168,85,247,0.03) 0%,transparent 40%);">
+<div id="main-content" class="min-h-screen font-display" style="background:#060611;background-image:radial-gradient(circle at 20% 50%,rgba(0,229,255,0.04) 0%,transparent 50%),radial-gradient(circle at 80% 20%,rgba(168,85,247,0.03) 0%,transparent 40%);">
 
   <!-- Nav -->
   <header class="fixed top-0 w-full z-50 border-b border-white/5 bg-bg-primary/80 backdrop-blur-xl">
@@ -13,14 +13,26 @@
         </div>
         <span class="text-white text-lg font-extrabold tracking-tight">SUDARSHAN</span>
       </div>
-      <nav class="hidden md:flex items-center gap-6">
+      <nav id="landing-nav" class="hidden md:flex items-center gap-6">
         <a href="#features" class="nav-link text-sm text-slate-400 font-medium">Features</a>
         <a href="#how-it-works" class="nav-link text-sm text-slate-400 font-medium">How It Works</a>
         <a href="#stats" class="nav-link text-sm text-slate-400 font-medium">Stats</a>
       </nav>
       <div class="flex items-center gap-4">
-        <a href="/login" class="nav-signin text-sm text-slate-300 font-semibold">Sign In</a>
+        <a href="/login" class="nav-signin text-sm text-slate-300 font-semibold hidden sm:inline">Sign In</a>
         <a href="/login" class="nav-cta bg-primary text-[#060611] px-5 py-2 rounded-lg text-sm font-bold">Get Started</a>
+        <button id="mobile-menu-btn" onclick="toggleLandingMenu()" class="md:hidden p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer bg-transparent border-0" aria-label="Toggle menu">
+          <span class="material-symbols-outlined text-2xl">menu</span>
+        </button>
+      </div>
+    </div>
+    <!-- Mobile menu dropdown -->
+    <div id="mobile-menu" class="hidden md:hidden border-t border-white/5 bg-bg-primary/95 backdrop-blur-xl">
+      <div class="px-6 py-4 space-y-3">
+        <a href="#features" class="block text-sm text-slate-400 font-medium hover:text-white transition-colors py-2">Features</a>
+        <a href="#how-it-works" class="block text-sm text-slate-400 font-medium hover:text-white transition-colors py-2">How It Works</a>
+        <a href="#stats" class="block text-sm text-slate-400 font-medium hover:text-white transition-colors py-2">Stats</a>
+        <a href="/login" class="block text-sm text-slate-300 font-semibold hover:text-white transition-colors py-2">Sign In</a>
       </div>
     </div>
   </header>
@@ -201,4 +213,17 @@
     </div>
   </footer>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleLandingMenu() {
+    const menu = document.getElementById('mobile-menu');
+    const btn = document.getElementById('mobile-menu-btn');
+    menu.classList.toggle('hidden');
+    const icon = btn.querySelector('.material-symbols-outlined');
+    icon.textContent = menu.classList.contains('hidden') ? 'menu' : 'close';
+  }
+</script>
 {% endblock %}

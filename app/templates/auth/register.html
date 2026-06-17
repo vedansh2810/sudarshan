@@ -12,7 +12,7 @@
     </a>
   </header>
 
-  <main class="flex-1 flex items-center justify-center p-6 mt-12">
+  <main id="main-content" class="flex-1 flex items-center justify-center p-6 mt-12">
     <div class="w-full max-w-[440px] login-card rounded-2xl p-8 lg:p-12 flex flex-col items-center animate-fade-in-up">
       <div class="mb-8 relative">
         <div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
@@ -26,6 +26,14 @@
 
       <!-- Alert area -->
       <div id="auth-alert" class="w-full mb-4 hidden"></div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+        <div class="flash-msg {{ cat }} w-full mb-4">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
 
       <div class="w-full space-y-4">
         <!-- Google OAuth -->
@@ -146,7 +154,7 @@
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirm-password').value;
 
-    if (!email || !password) { showAlert('Please fill in all fields.', 'error'); return; }
+    if (!email || !password || !confirmPassword) { showAlert('Please fill in all fields.', 'error'); return; }
     if (password.length < 6) { showAlert('Password must be at least 6 characters.', 'error'); return; }
     if (password !== confirmPassword) { showAlert('Passwords do not match.', 'error'); return; }
 

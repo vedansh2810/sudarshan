@@ -5,7 +5,7 @@
   <div id="sidebar-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden lg:hidden" onclick="toggleSidebar()"></div>
 
   <!-- Sidebar -->
-  <aside id="sidebar" class="w-[250px] bg-bg-secondary border-r border-slate-800 flex flex-col shrink-0 fixed lg:relative z-50 h-full -translate-x-full lg:translate-x-0 transition-transform duration-300">
+  <aside id="sidebar" role="complementary" aria-label="Sidebar" class="w-[250px] bg-bg-secondary border-r border-slate-800 flex flex-col shrink-0 fixed lg:relative z-50 h-full -translate-x-full lg:translate-x-0 transition-transform duration-300">
     <a href="/dashboard" class="p-6 flex items-center gap-3">
       <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center shadow-lg shadow-primary/20">
         <span class="material-symbols-outlined text-[#060611] font-bold" style="font-variation-settings:'FILL' 1">shield_with_heart</span>
@@ -16,7 +16,7 @@
       </div>
     </a>
 
-    <nav class="flex-1 px-4 mt-4 space-y-1 overflow-y-auto">
+    <nav aria-label="Main navigation" class="flex-1 px-4 mt-4 space-y-1 overflow-y-auto">
       {% set current = request.path %}
       <p class="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-4 mb-2">Main</p>
       {% for item in [
@@ -53,7 +53,7 @@
     <header class="h-16 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 bg-bg-card/50 backdrop-blur-md shrink-0">
       <div class="flex items-center gap-3">
         <!-- Mobile hamburger -->
-        <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer bg-transparent border-0">
+        <button onclick="toggleSidebar()" aria-label="Toggle menu" aria-expanded="false" class="lg:hidden p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer bg-transparent border-0">
           <span class="material-symbols-outlined text-2xl">menu</span>
         </button>
         <span class="text-slate-500 text-sm font-medium italic font-mono hidden sm:inline">// root /</span>
@@ -89,8 +89,23 @@
   function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
+    const btn = document.querySelector('[aria-label="Toggle menu"]');
     sidebar.classList.toggle('-translate-x-full');
     overlay.classList.toggle('hidden');
+    if (btn) btn.setAttribute('aria-expanded', !sidebar.classList.contains('-translate-x-full'));
   }
+
+  // Auto-dismiss flash messages after 5 seconds
+  document.querySelectorAll('.flash-msg').forEach(el => {
+    setTimeout(() => {
+      el.style.transition = 'opacity 0.5s, max-height 0.5s';
+      el.style.opacity = '0';
+      el.style.maxHeight = '0';
+      el.style.overflow = 'hidden';
+      el.style.marginBottom = '0';
+      el.style.padding = '0 16px';
+      setTimeout(() => el.remove(), 500);
+    }, 5000);
+  });
 </script>
 {% endblock %}

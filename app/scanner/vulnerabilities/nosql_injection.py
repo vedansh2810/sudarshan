@@ -106,10 +106,24 @@ class NoSQLInjectionScanner(BaseScanner):
         baseline_text = baseline_resp.text if baseline_resp else ""
         baseline_len = len(baseline_text)
 
+        # Extract unique operators from payloads to avoid sending duplicate requests
+        operators_tested = set()
         for payload_info in self.OPERATOR_PAYLOADS:
+            # Extract the operator name from the payload (e.g. "$gt" from '{"$gt": ""}')
+            import json as _json
+            try:
+                op_dict = _json.loads(payload_info["payload"])
+                operator = list(op_dict.keys())[0]  # e.g. "$gt"
+            except (ValueError, IndexError):
+                continue
+
+            if operator in operators_tested:
+                continue
+            operators_tested.add(operator)
+
             # Inject as query param value: param[$gt]=
             test_params = dict(params)
-            test_params[f"{param_name}[$gt]"] = [""]
+            test_params[f"{param_name}[{operator}]"] = [str(op_dict[operator])]
             if param_name in test_params:
                 del test_params[param_name]
             query = urlencode(test_params, doseq=True)
@@ -127,7 +141,7 @@ class NoSQLInjectionScanner(BaseScanner):
             if error_evidence:
                 return {
                     "technique": "error-based",
-                    "payload": f"{param_name}[$gt]=",
+                    "payload": f"{param_name}[{operator}]={op_dict[operator]}",
                     "url": test_url,
                     "param": param_name,
                     "method": "GET",
@@ -139,7 +153,7 @@ class NoSQLInjectionScanner(BaseScanner):
             if len_diff > 200 and resp_len > baseline_len:
                 return {
                     "technique": "operator-injection",
-                    "payload": f"{param_name}[$gt]=",
+                    "payload": f"{param_name}[{operator}]={op_dict[operator]}",
                     "url": test_url,
                     "param": param_name,
                     "method": "GET",

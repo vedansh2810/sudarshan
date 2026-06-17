@@ -43,7 +43,8 @@ class Config:
     SECURITY_HEADERS = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "SAMEORIGIN",
-        "X-XSS-Protection": "1; mode=block",
+        # X-XSS-Protection deliberately omitted — deprecated by modern browsers
+        # and can introduce vulnerabilities in older ones. Rely on CSP instead.
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     }
@@ -126,6 +127,15 @@ class Config:
         "YES",
     )
 
+    # Allow destructive SQL payloads (DROP TABLE, INSERT INTO, etc.) in scans.
+    # Default: False. Only enable for controlled lab environments.
+    ALLOW_DESTRUCTIVE_PAYLOADS = os.environ.get("ALLOW_DESTRUCTIVE_PAYLOADS", "0") in (
+        "1",
+        "true",
+        "True",
+        "yes",
+    )
+
     # ── Plan-based resource limits ─────────────────────────────────────
     PLAN_LIMITS = {
         "free": {
@@ -170,9 +180,16 @@ class ProductionConfig(Config):
         "DATABASE_URL", Config.SQLALCHEMY_DATABASE_URI
     )
     # Force SSL for PostgreSQL connections (prevents MitM on DB traffic)
+    # For psycopg3, sslmode is passed via the URI, not connect_args
+    _prod_db_url = os.environ.get("DATABASE_URL", Config.SQLALCHEMY_DATABASE_URI)
+    if _prod_db_url and "postgresql" in _prod_db_url and "sslmode" not in _prod_db_url:
+        _separator = "&" if "?" in _prod_db_url else "?"
+        SQLALCHEMY_DATABASE_URI = _prod_db_url + _separator + "sslmode=require"
+    else:
+        SQLALCHEMY_DATABASE_URI = _prod_db_url
+
     SQLALCHEMY_ENGINE_OPTIONS = {
         **Config.SQLALCHEMY_ENGINE_OPTIONS,
-        "connect_args": {"sslmode": "require"},
     }
 
     # Use Redis for rate limiting in production (shared across workers)

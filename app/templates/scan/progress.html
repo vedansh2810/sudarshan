@@ -92,8 +92,12 @@
   let sseConnected = false;
   let pollTimer = null;
 
-  function updateProgress(total, tested) {
-    const pct = total > 0 ? Math.round((tested / total) * 100) : 0;
+  function updateProgress(total, tested, phase) {
+    let pct = total > 0 ? Math.round((tested / total) * 100) : 0;
+    // Cap at 95% while still scanning — 100% only on 'complete' event
+    if (phase && phase !== 'completed' && pct >= 100) {
+      pct = 95;
+    }
     document.getElementById('progress-pct').textContent = pct + '%';
     const circle = document.getElementById('progress-circle');
     circle.setAttribute('stroke-dashoffset', 264 - (264 * pct / 100));
@@ -129,9 +133,20 @@
   let logBuffer = [];
   let logFlushTimer = null;
 
+  function formatTimestamp(ts) {
+    if (!ts) return '\u2014';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) {
+      return ts;
+    }
+  }
+
   function addLog(msg, level, ts) {
     if (firstLog) { logViewer.innerHTML = ''; firstLog = false; }
-    logBuffer.push({ msg, level, ts });
+    logBuffer.push({ msg, level, ts: formatTimestamp(ts) });
     if (!logFlushTimer) {
       logFlushTimer = setTimeout(flushLogs, 100);
     }
@@ -169,7 +184,7 @@
     const badge = document.createElement('span');
     badge.className = 'sev-badge';
     badge.style.cssText = 'color:' + color + ';background:' + color + '15;border:1px solid ' + color + '50';
-    badge.textContent = sanitizeHTML(data.severity);
+    badge.textContent = data.severity;
 
     const details = document.createElement('div');
     details.className = 'flex-1 min-w-0';
@@ -257,8 +272,9 @@
           document.getElementById('stat-total').textContent = d.total || 0;
           document.getElementById('stat-tested').textContent = d.tested || 0;
           document.getElementById('stat-findings').textContent = d.findings || 0;
-          updateProgress(d.total || 0, d.tested || 0);
+          updateProgress(d.total || 0, d.tested || 0, d.phase || 'scanning');
         } else if (msg.type === 'complete') {
+          updateProgress(1, 1, 'completed');
           setStatus('completed');
           addLog('Scan completed! Score: ' + (msg.data.score || 'N/A'), 'success', '');
           evtSrc.close();
@@ -288,7 +304,7 @@
       document.getElementById('stat-total').textContent = st.total_urls || 0;
       document.getElementById('stat-tested').textContent = st.tested_urls || 0;
       document.getElementById('stat-findings').textContent = st.findings || 0;
-      updateProgress(st.total_urls || 0, st.tested_urls || 0);
+      updateProgress(st.total_urls || 0, st.tested_urls || 0, st.status === 'completed' ? 'completed' : 'scanning');
     } catch(e) {}
   }
 
@@ -302,12 +318,20 @@
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
-  // Client-side elapsed timer
-  const scanStart = Date.now();
+  // Client-side elapsed timer — use scan start time if available, fallback to page load
+  const scanStartedAt = '{{ scan.started_at or "" }}';
+  const scanStart = scanStartedAt ? new Date(scanStartedAt).getTime() : Date.now();
   setInterval(() => {
       const el = document.getElementById('stat-elapsed');
       if (el && !['completed','stopped','error'].includes(currentStatus)) {
-        el.textContent = Math.round((Date.now() - scanStart) / 1000) + 's';
+        const secs = Math.round((Date.now() - scanStart) / 1000);
+        if (secs < 60) {
+          el.textContent = secs + 's';
+        } else if (secs < 3600) {
+          el.textContent = Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
+        } else {
+          el.textContent = Math.floor(secs / 3600) + 'h ' + Math.floor((secs % 3600) / 60) + 'm';
+        }
       }
   }, 1000);
 

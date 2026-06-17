@@ -32,7 +32,8 @@ def index():
     query = Scan.for_user_query(user_id)
 
     if search:
-        query = query.filter(ScanModel.target_url.ilike(f"%{search}%"))
+        safe_search = search.replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(ScanModel.target_url.ilike(f"%{safe_search}%", escape="\\"))
     if date_from:
         query = query.filter(func.date(ScanModel.started_at) >= date_from)
     if date_to:
@@ -112,7 +113,13 @@ def delete(scan_id):
 @limiter.limit("20 per hour")
 @login_required
 def api_delete(scan_id):
-    """API endpoint for JS-based deletion"""
+    """API endpoint for JS-based deletion — validates origin for CSRF protection."""
+    # Origin validation since CSRF is exempt
+    origin = request.headers.get("Origin") or request.headers.get("Referer", "")
+    allowed_origin = request.host_url.rstrip("/")
+    if not origin.startswith(allowed_origin):
+        return jsonify({"error": "Invalid origin"}), 403
+
     scan = Scan.get_by_id(scan_id)
     if user_can_access_scan(scan, session.get("user_id")):
         Scan.delete(scan_id)

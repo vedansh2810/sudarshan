@@ -1,6 +1,6 @@
 """Sudarshan Web Vulnerability Scanner - Application Factory"""
 
-from flask import Flask
+from flask import Flask, render_template
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -92,7 +92,7 @@ def create_app(config=None):
     if "sqlite" not in db_uri:
         from sqlalchemy import create_engine
 
-        probe_engine = create_engine(db_uri, pool_pre_ping=True)
+        probe_engine = create_engine(db_uri, pool_pre_ping=True, connect_args={"connect_timeout": 5})
         try:
             with probe_engine.connect() as conn:
                 pass  # Connection works
@@ -103,8 +103,8 @@ def create_app(config=None):
                 PROJECT_ROOT, "data", "database.db"
             )
             logging.warning(
-                f"PostgreSQL unreachable ({type(db_err).__name__}). "
-                f"Falling back to SQLite: {sqlite_uri}"
+                "PostgreSQL unreachable (%s). Falling back to SQLite: %s",
+                type(db_err).__name__, sqlite_uri
             )
             app.config["SQLALCHEMY_DATABASE_URI"] = sqlite_uri
             app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {}
@@ -121,7 +121,7 @@ def create_app(config=None):
         from sqlalchemy.engine import Engine
         import sqlite3
 
-        @event.listens_for(Engine, "connect")
+        @event.listens_for(Engine, "connect", once=True)
         def _set_sqlite_pragma(dbapi_connection, connection_record):
             if isinstance(dbapi_connection, sqlite3.Connection):
                 cursor = dbapi_connection.cursor()
@@ -252,7 +252,7 @@ def create_app(config=None):
         )
         if req.is_json or req.path.startswith("/api/"):
             return jf({"error": "Forbidden"}), 403
-        return "Forbidden", 403
+        return render_template("errors/403.html"), 403
 
     @app.errorhandler(404)
     def _not_found(e):
@@ -266,7 +266,7 @@ def create_app(config=None):
             )
         if req.is_json or req.path.startswith("/api/"):
             return jf({"error": "Not found"}), 404
-        return "Not found", 404
+        return render_template("errors/404.html"), 404
 
     @app.errorhandler(429)
     def _rate_limited(e):
@@ -279,7 +279,7 @@ def create_app(config=None):
         )
         if req.is_json or req.path.startswith("/api/"):
             return jf({"error": "Too many requests"}), 429
-        return "Too many requests. Please try again later.", 429
+        return render_template("errors/429.html"), 429
 
     @app.errorhandler(500)
     def _internal_error(e):
@@ -295,7 +295,7 @@ def create_app(config=None):
         )
         if req.is_json or req.path.startswith("/api/"):
             return jf({"error": "Internal server error"}), 500
-        return "Internal server error", 500
+        return render_template("errors/500.html"), 500
 
     # Call init_app if the config class defines it (production validation)
     config_class = config or DevelopmentConfig

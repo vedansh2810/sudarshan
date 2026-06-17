@@ -16,9 +16,11 @@ limiter.limit("60 per minute")(api_bp)
 @api_bp.route("/api/scan/<int:scan_id>/status")
 @login_required
 def scan_status(scan_id):
-    if not user_can_access_scan(scan_id, session["user_id"]):
-        return jsonify({"error": "Not found"}), 404
     scan = Scan.get_by_id(scan_id)
+    if not scan:
+        return jsonify({"error": "Not found"}), 404
+    if not user_can_access_scan(scan, session["user_id"]):
+        return jsonify({"error": "Forbidden"}), 403
     manager = ScanManager.get_instance()
     status = manager.get_status(scan_id)
     return jsonify(status or {"status": scan["status"]})

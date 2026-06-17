@@ -2,7 +2,7 @@
 {% block title %}Signing in…{% endblock %}
 
 {% block body %}
-<div class="min-h-screen flex items-center justify-center bg-[#060611] font-display">
+<div id="main-content" class="min-h-screen flex items-center justify-center bg-[#060611] font-display">
   <div class="text-center animate-fade-in-up">
     <div class="mb-8 relative inline-block">
       <div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
@@ -16,6 +16,7 @@
       <div class="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto"></div>
     </div>
     <p id="error-msg" class="text-red-400 text-sm mt-4 hidden"></p>
+    <a id="retry-link" href="/login" class="text-primary text-sm mt-4 hidden hover:underline">Taking too long? Click here to try again →</a>
   </div>
 </div>
 {% endblock %}
@@ -24,6 +25,12 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
 <script>
 (async () => {
+  // Show retry link after 15 seconds if auth hangs
+  const retryTimeout = setTimeout(() => {
+    const retryLink = document.getElementById('retry-link');
+    if (retryLink) retryLink.classList.remove('hidden');
+  }, 15000);
+
   const statusEl = document.getElementById('status-msg');
   const errorEl  = document.getElementById('error-msg');
 
@@ -62,6 +69,7 @@
 
     if (resp.ok && result.success) {
       statusEl.textContent = 'Welcome! Redirecting…';
+      clearTimeout(retryTimeout);
       window.location.href = result.redirect || '/dashboard';
     } else {
       showError(result.error || 'Server rejected the token.');

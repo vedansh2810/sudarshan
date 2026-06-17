@@ -353,7 +353,7 @@ class ScanManager:
             "type": event_type,
             "data": data,
             "level": log_level,
-            "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         serialized = f"data: {json.dumps(msg)}\n\n"
 
@@ -786,7 +786,7 @@ class ScanManager:
                             crawler_cookies = crawler.session.cookies
                             crawler_headers = crawler.session.headers
                             scanner_session = httpx.Client(
-                                verify=False,
+                                verify=not Config.ALLOW_INSECURE_TARGETS,
                                 timeout=httpx.Timeout(timeout_val, connect=5.0),
                                 follow_redirects=True,
                                 cookies=dict(crawler_cookies),
@@ -814,6 +814,9 @@ class ScanManager:
                         return display_name, findings, None
                     except Exception as e:
                         return display_name, [], str(e)
+                    finally:
+                        if scanner_session:
+                            scanner_session.close()
 
                 max_workers = min(
                     len(parallel_scanners), speed_config.get("threads", 5)
@@ -1041,6 +1044,9 @@ class ScanManager:
         except Exception:
             pass  # Webhooks are non-critical
 
+        # Clean up in-memory event history to prevent memory leak
+        self.event_history.pop(scan_id, None)
+
         # Clean up Redis state (keep event_history for 1h for late-joining clients)
         redis = self._get_redis()
         if redis:
@@ -1050,5 +1056,4 @@ class ScanManager:
             except Exception:
                 pass
 
-        if scan_id in self.active_scans:
-            del self.active_scans[scan_id]
+        self.active_scans.pop(scan_id, None)

@@ -138,7 +138,13 @@ class Organization:
     @staticmethod
     def get_user_orgs(user_id):
         """Get all organizations a user belongs to."""
-        memberships = OrgMembershipModel.query.filter_by(user_id=user_id).all()
+        from sqlalchemy.orm import joinedload
+        memberships = (
+            OrgMembershipModel.query
+            .filter_by(user_id=user_id)
+            .options(joinedload(OrgMembershipModel.organization))
+            .all()
+        )
         result = []
         for m in memberships:
             org = Organization._to_dict(m.organization)

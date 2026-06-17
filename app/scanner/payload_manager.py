@@ -628,6 +628,16 @@ class PayloadManager:
     # Public API
     # ================================================================
 
+    @staticmethod
+    def _destructive_allowed():
+        """Check if destructive payloads (DROP TABLE etc.) are allowed."""
+        try:
+            from flask import current_app
+            return current_app.config.get("ALLOW_DESTRUCTIVE_PAYLOADS", False)
+        except RuntimeError:
+            import os
+            return os.environ.get("ALLOW_DESTRUCTIVE_PAYLOADS", "0") in ("1", "true", "yes")
+
     def get_payloads(
         self,
         vuln_type: str,
@@ -659,7 +669,11 @@ class PayloadManager:
         # Collect from custom payloads
         if source in ('custom', 'both'):
             techniques = self.custom_payloads.get(vuln_type, {})
-            for technique_payloads in techniques.values():
+            for technique_name, technique_payloads in techniques.items():
+                # Gate destructive payloads (DROP, INSERT, UPDATE) behind config
+                if technique_name == 'stacked' and vuln_type == 'sql_injection':
+                    if not self._destructive_allowed():
+                        continue
                 _add(technique_payloads)
 
         # Collect from PortSwigger payloads

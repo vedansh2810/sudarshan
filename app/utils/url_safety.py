@@ -25,7 +25,16 @@ def _allow_local_targets() -> bool:
     return os.getenv("ALLOW_LOCAL_TARGETS", "false").lower() in ("true", "1", "yes")
 
 
-# IP ranges that must never be reached via user-supplied URLs
+# IP ranges that must ALWAYS be blocked, even when ALLOW_LOCAL_TARGETS=true
+_ALWAYS_BLOCKED_RANGES = [
+    # Cloud metadata endpoints (AWS, GCP, Azure)
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fd00:ec2::/32"),
+    # "This" network — used for SSRF tricks
+    ipaddress.ip_network("0.0.0.0/8"),
+]
+
+# IP ranges blocked unless ALLOW_LOCAL_TARGETS is enabled
 _BLOCKED_RANGES = [
     # Loopback
     ipaddress.ip_network("127.0.0.0/8"),
@@ -34,11 +43,10 @@ _BLOCKED_RANGES = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
-    # Link-local
-    ipaddress.ip_network("169.254.0.0/16"),
+    # Link-local (covered by ALWAYS_BLOCKED but kept for completeness)
     ipaddress.ip_network("fe80::/10"),
-    # Cloud metadata
-    ipaddress.ip_network("fd00:ec2::/32"),
+    # Carrier-Grade NAT (shared address space)
+    ipaddress.ip_network("100.64.0.0/10"),
     # Unique-local (IPv6 private)
     ipaddress.ip_network("fc00::/7"),
 ]
@@ -60,12 +68,19 @@ def resolve_and_validate(hostname):
         results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         if not results:
             return None, False, f"DNS resolution returned no results for: {hostname}"
-        ip_str = results[0][4][0]
-        ip = ipaddress.ip_address(ip_str)
-        for blocked in _BLOCKED_RANGES:
-            if ip in blocked:
-                return ip_str, False, f"Resolved to blocked IP: {ip_str}"
-        return ip_str, True, None
+        # Check ALL resolved IPs to prevent multi-A-record DNS rebinding
+        all_ips = list({r[4][0] for r in results})
+        for ip_str in all_ips:
+            ip = ipaddress.ip_address(ip_str)
+            # Always-blocked ranges (cloud metadata) — even with ALLOW_LOCAL_TARGETS
+            for blocked in _ALWAYS_BLOCKED_RANGES:
+                if ip in blocked:
+                    return ip_str, False, f"Resolved to blocked IP: {ip_str}"
+            for blocked in _BLOCKED_RANGES:
+                if ip in blocked:
+                    return ip_str, False, f"Resolved to blocked IP: {ip_str}"
+        # Return the first IP as the primary resolved address
+        return all_ips[0], True, None
     except socket.gaierror:
         return None, False, f"DNS resolution failed for: {hostname}"
     except Exception as e:
@@ -99,8 +114,19 @@ def is_safe_url(url: str) -> tuple[bool, str]:
         if hostname.lower() in _BLOCKED_HOSTNAMES:
             return False, f'Hostname "{hostname}" is a blocked cloud metadata endpoint'
 
-        # Allow localhost / private IPs when explicitly enabled
+        # When local targets are allowed, still validate against always-blocked
+        # ranges (cloud metadata IPs) to prevent SSRF to cloud services
         if _allow_local_targets():
+            try:
+                results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+                if results:
+                    for r in results:
+                        ip = ipaddress.ip_address(r[4][0])
+                        for blocked in _ALWAYS_BLOCKED_RANGES:
+                            if ip in blocked:
+                                return False, f"Blocked cloud metadata IP: {r[4][0]}"
+            except Exception:
+                pass  # DNS failure is not a block reason in local mode
             return True, ""
 
         # Resolve and validate hostname via single code path

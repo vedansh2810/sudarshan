@@ -288,7 +288,7 @@ class BrokenAuthScanner(BaseScanner):
                         "name": "Default Credentials Accepted",
                         "description": (
                             f"The application accepts default credentials: "
-                            f'username="{username}", password="{password}". '
+                            f'username="{username}". '
                             f'Login form at: {login_info["url"]}'
                         ),
                         "impact": (
@@ -300,7 +300,7 @@ class BrokenAuthScanner(BaseScanner):
                         "owasp_category": "A07",
                         "affected_url": login_info["url"],
                         "parameter": f'{login_info["username_field"]}/{login_info["password_field"]}',
-                        "payload": f"{username}:{password}",
+                        "payload": f"{username}:[MASKED]",
                         "request_data": f'POST {login_info["action"]}',
                         "response_data": resp_text[:300],
                         "remediation": (
@@ -412,33 +412,18 @@ class BrokenAuthScanner(BaseScanner):
         insecure_cookies = []
         is_https = target_url.startswith("https")
 
-        for cookie in resp.cookies:
+        # Collect all Set-Cookie header values (httpx uses multi_items())
+        set_cookie_values = [
+            v for k, v in resp.headers.multi_items() if k.lower() == "set-cookie"
+        ]
+
+        # httpx.Cookies iteration yields cookie name strings (not objects)
+        for cookie_name in resp.cookies:
             issues = []
 
-            # Check HttpOnly
-            # Note: requests library doesn't expose HttpOnly directly,
-            # we need to check the Set-Cookie header
-            cookie_name = cookie.name
-
-            # Parse Set-Cookie headers for detailed flag checks
-            set_cookie_headers = (
-                resp.headers.get("Set-Cookie", "") if hasattr(resp, "headers") else ""
-            )
-
-            if isinstance(set_cookie_headers, str):
-                set_cookie_headers = [set_cookie_headers]
-
-            for header_val in (
-                resp.raw.headers.getlist("Set-Cookie")
-                if hasattr(resp, "raw") and hasattr(resp.raw, "headers")
-                else (
-                    [set_cookie_headers]
-                    if isinstance(set_cookie_headers, str)
-                    else set_cookie_headers
-                )
-            ):
-                if cookie_name in str(header_val):
-                    header_lower = str(header_val).lower()
+            for header_val in set_cookie_values:
+                if cookie_name in header_val:
+                    header_lower = header_val.lower()
                     if "httponly" not in header_lower:
                         issues.append("Missing HttpOnly flag")
                     if is_https and "secure" not in header_lower:

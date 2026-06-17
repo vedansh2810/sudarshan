@@ -163,15 +163,12 @@ class CSRFScanner(BaseScanner):
             else:
                 data[name] = inp.get("value", "") or "test"
 
-        # Submit without Referer/Origin headers (remove them entirely)
-        saved_referer = self.session.headers.pop("Referer", None)
-        saved_origin = self.session.headers.pop("Origin", None)
-        response = self._request("POST", url, data=data)
-        # Restore headers
-        if saved_referer:
-            self.session.headers["Referer"] = saved_referer
-        if saved_origin:
-            self.session.headers["Origin"] = saved_origin
+        # Submit without Referer/Origin headers using per-request header override
+        # instead of mutating shared session headers (thread-safety)
+        override_headers = dict(self.session.headers) if self.session else {}
+        override_headers.pop("Referer", None)
+        override_headers.pop("Origin", None)
+        response = self._request("POST", url, data=data, headers=override_headers)
 
         if response and response.status_code in (200, 302):
             return True  # Request accepted without Referer — vulnerable

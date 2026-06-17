@@ -285,7 +285,7 @@ class JWTAttackScanner(BaseScanner):
                         "vuln_type": "jwt_attacks",
                         "name": "JWT Weak Secret Detected",
                         "description": (
-                            f'The JWT signing secret is "{secret}" — a common weak password. '
+                            f"The JWT signing secret is a common weak password ({len(secret)} chars). "
                             f"An attacker can forge valid tokens with arbitrary claims."
                         ),
                         "impact": (
@@ -297,8 +297,8 @@ class JWTAttackScanner(BaseScanner):
                         "owasp_category": "A07",
                         "affected_url": target_url,
                         "parameter": source,
-                        "payload": f'secret="{secret}"',
-                        "request_data": f"Algorithm: {alg}, Secret: {secret}",
+                        "payload": f'secret=[WEAK_SECRET_MASKED]',
+                        "request_data": f"Algorithm: {alg}, Secret: [MASKED]",
                         "response_data": f"Token signature matched with weak secret",
                         "remediation": (
                             "1. Use a strong, randomly generated secret (256+ bits).\n"

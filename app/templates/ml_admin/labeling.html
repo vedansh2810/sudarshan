@@ -52,6 +52,21 @@
         <option value="command_injection" {{ 'selected' if selected_type=='command_injection' }}>Command Injection</option>
         <option value="directory_traversal" {{ 'selected' if selected_type=='directory_traversal' }}>Directory Traversal</option>
         <option value="idor" {{ 'selected' if selected_type=='idor' }}>IDOR</option>
+        <option value="xxe" {{ 'selected' if selected_type=='xxe' }}>XXE</option>
+        <option value="ssrf" {{ 'selected' if selected_type=='ssrf' }}>SSRF</option>
+        <option value="open_redirect" {{ 'selected' if selected_type=='open_redirect' }}>Open Redirect</option>
+        <option value="cors" {{ 'selected' if selected_type=='cors' }}>CORS</option>
+        <option value="clickjacking" {{ 'selected' if selected_type=='clickjacking' }}>Clickjacking</option>
+        <option value="ssti" {{ 'selected' if selected_type=='ssti' }}>SSTI</option>
+        <option value="security_headers" {{ 'selected' if selected_type=='security_headers' }}>Security Headers</option>
+        <option value="jwt_attacks" {{ 'selected' if selected_type=='jwt_attacks' }}>JWT Attacks</option>
+        <option value="broken_auth" {{ 'selected' if selected_type=='broken_auth' }}>Broken Auth</option>
+        <option value="nosql_injection" {{ 'selected' if selected_type=='nosql_injection' }}>NoSQL Injection</option>
+        <option value="file_upload" {{ 'selected' if selected_type=='file_upload' }}>File Upload</option>
+        <option value="host_header" {{ 'selected' if selected_type=='host_header' }}>Host Header</option>
+        <option value="info_disclosure" {{ 'selected' if selected_type=='info_disclosure' }}>Info Disclosure</option>
+        <option value="prototype_pollution" {{ 'selected' if selected_type=='prototype_pollution' }}>Prototype Pollution</option>
+        <option value="insecure_deserialization" {{ 'selected' if selected_type=='insecure_deserialization' }}>Deserialization</option>
       </select>
     </form>
     <span class="text-xs text-slate-500 ml-auto font-mono">{{ attempts|length if attempts else 0 }} items</span>
@@ -134,6 +149,11 @@
 {% block scripts %}
 <script>
   function labelAttempt(attemptId, isTruePositive) {
+    // Disable buttons to prevent double-click
+    const card = document.getElementById('attempt-' + attemptId);
+    const buttons = card.querySelectorAll('.label-buttons button');
+    buttons.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
+
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     fetch('/ml/label/' + attemptId, {
       method: 'POST',
@@ -160,7 +180,10 @@
           alert('Error: ' + (data.error || 'Unknown'));
         }
       })
-      .catch(err => alert('Network error: ' + err));
+      .catch(err => {
+        alert('Network error: ' + err);
+        buttons.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+      });
   }
 </script>
 {% endblock %}

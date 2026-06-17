@@ -360,16 +360,20 @@ class LLMClient:
 
 # ── Singleton for app-wide use ───────────────────────────────────────
 
+import threading
 _client_instance = None
+_client_lock = threading.Lock()
 
 
 def get_llm_client(app=None):
-    """Get or create the global LLMClient instance."""
+    """Get or create the global LLMClient instance (thread-safe)."""
     global _client_instance
     if _client_instance is None:
-        if app is None:
-            from flask import current_app
+        with _client_lock:
+            if _client_instance is None:
+                if app is None:
+                    from flask import current_app
 
-            app = current_app
-        _client_instance = LLMClient.from_config(app.config)
+                    app = current_app
+                _client_instance = LLMClient.from_config(app.config)
     return _client_instance

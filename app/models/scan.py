@@ -122,10 +122,10 @@ class Scan:
         db.session.commit()
 
     @staticmethod
-    def complete(scan_id, score, duration, total_urls, critical, high, medium, low):
+    def complete(scan_id, score, duration, total_urls, critical, high, medium, low, status="completed"):
         scan = db.session.get(ScanModel, scan_id)
         if scan:
-            scan.status = "completed"
+            scan.status = status
             scan.score = score
             scan.duration = duration
             scan.total_urls = total_urls
@@ -229,10 +229,7 @@ class Scan:
     def delete_by_org(org_id):
         """Delete all scans belonging to an organization (GDPR tenant purge).
         Cascading relationships handle vulnerabilities, logs, crawled_urls."""
-        scans = ScanModel.query.filter_by(org_id=org_id).all()
-        count = len(scans)
-        for scan in scans:
-            db.session.delete(scan)
+        count = ScanModel.query.filter_by(org_id=org_id).delete(synchronize_session='fetch')
         if count:
             db.session.commit()
         return count
