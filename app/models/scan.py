@@ -129,6 +129,7 @@ class Scan:
             scan.score = score
             scan.duration = duration
             scan.total_urls = total_urls
+            scan.tested_urls = total_urls  # Ensure progress shows 100%
             scan.vuln_count = critical + high + medium + low
             scan.critical_count = critical
             scan.high_count = high

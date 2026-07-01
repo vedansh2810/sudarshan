@@ -479,7 +479,7 @@ class ScanManager:
                     timeout=speed_config["timeout"],
                     verify=not allow_insecure,
                     follow_redirects=True,
-                    headers={"User-Agent": "Sudarshan-Scanner/1.0 (Security Research)"},
+                    headers=Config.SCANNER_HEADERS,
                 )
                 target_reachable = True
                 self._emit(
@@ -790,7 +790,7 @@ class ScanManager:
                                 timeout=httpx.Timeout(timeout_val, connect=5.0),
                                 follow_redirects=True,
                                 cookies=dict(crawler_cookies),
-                                headers=dict(crawler_headers),
+                                headers={**dict(crawler_headers), **Config.SCANNER_HEADERS},
                                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
                             )
                         else:

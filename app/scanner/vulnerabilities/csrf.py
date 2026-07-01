@@ -103,7 +103,7 @@ class CSRFScanner(BaseScanner):
         # Check if the invalid-token request was truly accepted
         # False positive guards:
         # 1. If redirected to a login/error page, the token WAS validated
-        final_url = response.url if hasattr(response, "url") else ""
+        final_url = str(response.url) if hasattr(response, "url") else ""
         login_indicators = [
             "login",
             "signin",

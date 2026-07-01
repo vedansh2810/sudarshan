@@ -592,7 +592,7 @@ h4{{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter
 .meta-table td:first-child{{color:#64748b;width:130px;}}
 code{{background:rgba(255,255,255,0.08);padding:2px 8px;border-radius:4px;font-family:monospace;font-size:12px;}}
 .code-block{{background:#050510;border:1px solid rgba(0,212,170,0.15);border-radius:8px;padding:12px 16px;font-family:monospace;font-size:12px;color:#a5f3fc;white-space:pre-wrap;word-break:break-all;margin-bottom:8px;}}
-.remediation{{background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.2);border-radius:10px;padding:14px;color:#4ade80;font-size:14px;}}
+.remediation{{background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.2);border-radius:10px;padding:14px;color:#4ade80;font-size:14px;white-space:pre-line;}}
 table.vuln-table{{width:100%;border-collapse:collapse;font-size:13px;}}
 table.vuln-table th{{background:rgba(255,255,255,0.05);color:#94a3b8;padding:10px 14px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}}
 table.vuln-table td{{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.05);}}

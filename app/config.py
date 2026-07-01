@@ -66,10 +66,23 @@ class Config:
     # Rate limiter storage (default: in-memory; overridden to Redis in production)
     RATELIMIT_STORAGE_URI = "memory://"
 
-    # AI / LLM Configuration (Groq — Llama 3.3 70B)
+    # AI / LLM Configuration (Groq — Qwen3 32B)
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
     GROQ_API_KEYS = os.environ.get("GROQ_API_KEYS", "")  # Comma-separated, for key rotation
-    GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3-32b")
+
+    # ── Scanner Identity ──────────────────────────────────────────────────
+    # These headers are sent with EVERY outgoing HTTP request during a scan.
+    # They allow the target's security team to identify Sudarshan in their
+    # server logs (access logs, WAF, IDS/IPS) and confirm the scan is authorized.
+    SCANNER_NAME = "Sudarshan"
+    SCANNER_VERSION = "1.0"
+    SCANNER_USER_AGENT = f"Sudarshan-Scanner/{SCANNER_VERSION} (Authorized Security Scan)"
+    SCANNER_HEADERS = {
+        "User-Agent": SCANNER_USER_AGENT,
+        "X-Scanner": SCANNER_NAME,
+        "X-Scanner-Version": SCANNER_VERSION,
+    }
 
     SCAN_SPEEDS = {
         "safe": {"delay": 1.0, "threads": 3, "timeout": 10, "max_urls": 75},

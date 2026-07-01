@@ -1,4 +1,4 @@
-"""LLM Client — Groq (Llama 3.3 70B).
+"""LLM Client — Groq (Qwen3 32B).
 
 Provides a unified interface for LLM calls with:
 - Multi-key rotation (round-robin) to spread rate limits across keys
@@ -16,6 +16,7 @@ Configuration:
 """
 
 import json
+import re
 import time
 import hashlib
 import logging
@@ -140,7 +141,7 @@ class LLMClient:
         if isinstance(api_keys, str):
             api_keys = [k.strip() for k in api_keys.split(",") if k.strip()]
         self._api_keys = api_keys or []
-        self.model_name = model_name or "llama-3.3-70b-versatile"
+        self.model_name = model_name or "qwen/qwen3-32b"
 
         self._rate_limiter = RateLimiter(max_calls=28, period=60)
         self._cache = ResponseCache(ttl=3600)
@@ -175,7 +176,7 @@ class LLMClient:
             keys_str = single_key
 
         model = config.get("GROQ_MODEL", "") or os.environ.get(
-            "GROQ_MODEL", "llama-3.3-70b-versatile"
+            "GROQ_MODEL", "qwen/qwen3-32b"
         )
         return cls(api_keys=keys_str, model_name=model)
 
@@ -340,6 +341,21 @@ class LLMClient:
             # Remove first and last lines (code fences)
             lines = [l for l in lines if not l.strip().startswith("```")]
             text = "\n".join(lines)
+
+        # Strip <think>...</think> blocks (Qwen3 reasoning models)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        # Handle unclosed <think> tags (truncated thinking)
+        if text.startswith("<think>"):
+            text = ""
+
+        if not text:
+            logger.warning("LLM response was empty after stripping think tags")
+            return None
+
+        # Try to extract JSON object/array if surrounded by extra text
+        json_match = re.search(r"(\{.*\}|\[.*\])", text, flags=re.DOTALL)
+        if json_match:
+            text = json_match.group(1)
 
         try:
             return json.loads(text)

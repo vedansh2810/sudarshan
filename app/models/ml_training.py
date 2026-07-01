@@ -55,7 +55,7 @@ class ScanAttempt(db.Model):
     )
 
     # Relationship
-    scan = db.relationship('ScanModel', backref=db.backref('attempts', lazy='dynamic'))
+    scan = db.relationship('ScanModel', backref=db.backref('attempts', lazy='dynamic', cascade='all, delete-orphan', passive_deletes=True))
 
     def __repr__(self):
         return f'<ScanAttempt {self.id} - {self.vulnerability_type}>'

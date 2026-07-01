@@ -102,7 +102,7 @@
         {% if v.impact %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Impact</p><p class="text-sm text-slate-300 leading-relaxed">{{ v.impact }}</p></div>{% endif %}
         {% if v.parameter %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Parameter</p><code class="text-sm text-primary bg-primary/5 px-2 py-1 rounded font-mono">{{ v.parameter }}</code></div>{% endif %}
         {% if v.payload %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Payload</p><pre class="bg-[#030308] rounded-lg p-4 text-sm font-mono text-red-400 overflow-x-auto border border-slate-800 whitespace-pre-wrap break-all">{{ v.payload }}</pre></div>{% endif %}
-        {% if v.remediation %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Remediation</p><p class="text-sm text-emerald-400 leading-relaxed">{{ v.remediation }}</p></div>{% endif %}
+        {% if v.remediation %}<div><p class="text-xs text-slate-500 font-bold uppercase mb-1">Remediation</p><div class="text-sm text-emerald-400 leading-relaxed space-y-1">{% for line in v.remediation.split('\n') %}{% if line.strip() %}<p class="m-0">{{ line.strip() }}</p>{% endif %}{% endfor %}</div></div>{% endif %}
         {% if v.likely_false_positive %}
         <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-center gap-3">
           <span class="material-symbols-outlined text-amber-400">warning</span>

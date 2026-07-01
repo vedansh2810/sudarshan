@@ -2,7 +2,9 @@
 {% block page_title %}ML Statistics{% endblock %}
 {% block title %}ML Statistics{% endblock %}
 
-{% block head %}{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% endblock %}
 
 {% block content %}
 <div class="space-y-8 animate-fade-in-up">
@@ -88,6 +90,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-800/50">
+          {% for item in stats.by_type %}
           {% set vuln_labels = {
             'sql_injection': 'SQL Injection', 'xss': 'XSS', 'csrf': 'CSRF',
             'security_headers': 'Security Headers', 'directory_traversal': 'Directory Traversal',
@@ -99,7 +102,6 @@
             'host_header': 'Host Header', 'info_disclosure': 'Info Disclosure',
             'prototype_pollution': 'Prototype Pollution', 'insecure_deserialization': 'Deserialization'
           } %}
-          {% for item in stats.by_type %}
           <tr class="hover:bg-white/[0.02] transition-colors">
             <td class="px-6 py-4">
               <div class="flex items-center gap-3">
@@ -110,9 +112,8 @@
             <td class="px-6 py-4 text-center font-mono text-sm text-white">{{ item.total }}</td>
             <td class="px-6 py-4 text-center font-mono text-sm text-red-500">{{ item.true_positives }}</td>
             <td class="px-6 py-4 text-center">
-              {% set labeled_count = (item.true_positives or 0) + (item.false_positives or 0) %}
-              {% if labeled_count > 0 %}
-              {% set fp_rate = (((item.false_positives or 0) / labeled_count) * 100) | round(1) %}
+              {% if item.total > 0 %}
+              {% set fp_rate = (((item.total - item.true_positives) / item.total) * 100) | round(1) %}
               <span class="sev-badge {% if fp_rate < 20 %}text-emerald-500 bg-emerald-500/10 border border-emerald-500/30{% elif fp_rate < 50 %}text-amber-500 bg-amber-500/10 border border-amber-500/30{% else %}text-red-500 bg-red-500/10 border border-red-500/30{% endif %}">
                 {{ fp_rate }}%
               </span>

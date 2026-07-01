@@ -247,7 +247,7 @@ SUPABASE_SERVICE_KEY={supabase_creds["SUPABASE_SERVICE_KEY"]}
 GROQ_API_KEY=
 # Multiple keys (comma-separated, round-robin rotation for better rate limits):
 # GROQ_API_KEYS=gsk_key1,gsk_key2,gsk_key3
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=qwen/qwen3-32b
 """
 
     ENV_FILE.write_text(env_content, encoding="utf-8")
@@ -346,21 +346,60 @@ def create_data_dirs():
     else:
         log_ok("Data directories exist")
 
+def _tailwind_is_stale():
+    """Check if any template/CSS source is newer than the built Tailwind CSS.
+
+    Returns True if a rebuild is needed (CSS missing, empty, or stale).
+    """
+    if not TAILWIND_CSS.exists() or TAILWIND_CSS.stat().st_size < 1000:
+        return True  # Missing or near-empty → needs build
+
+    css_mtime = TAILWIND_CSS.stat().st_mtime
+
+    # Check all template HTML files and the Tailwind input/config
+    watch_paths = [
+        PROJECT_ROOT / "app" / "templates",
+        PROJECT_ROOT / "app" / "static" / "css" / "tailwind-input.css",
+        PROJECT_ROOT / "tailwind.config.js",
+    ]
+    for wp in watch_paths:
+        if not wp.exists():
+            continue
+        if wp.is_file():
+            if wp.stat().st_mtime > css_mtime:
+                return True
+        else:
+            # Directory — check all HTML files recursively
+            for html_file in wp.rglob("*.html"):
+                if html_file.stat().st_mtime > css_mtime:
+                    return True
+    return False
+
+
 def setup_tailwind():
     """Install Node dependencies and build Tailwind CSS."""
     log("Checking Tailwind CSS build...")
 
-    # If pre-built CSS exists and is recent, skip
-    if TAILWIND_CSS.exists() and TAILWIND_CSS.stat().st_size > 1000:
-        log_ok(f"tailwind-built.css exists ({TAILWIND_CSS.stat().st_size:,} bytes)")
-        return
-
     # Check if npm is available
     if not command_exists("npm"):
-        log_warn("npm not found -- skipping Tailwind CSS build")
-        log_warn("The app will still work but may have missing styles.")
+        if TAILWIND_CSS.exists() and TAILWIND_CSS.stat().st_size > 1000:
+            log_ok(f"tailwind-built.css exists ({TAILWIND_CSS.stat().st_size:,} bytes)")
+            log_warn("npm not found -- cannot rebuild if templates changed")
+        else:
+            log_warn("npm not found -- skipping Tailwind CSS build")
+            log_warn("The app will still work but may have missing styles.")
         log_warn("Install Node.js from: https://nodejs.org/")
         return
+
+    # Skip rebuild if CSS is up-to-date (no template is newer than the built file)
+    if not _tailwind_is_stale():
+        log_ok(f"tailwind-built.css is up-to-date ({TAILWIND_CSS.stat().st_size:,} bytes)")
+        return
+
+    if TAILWIND_CSS.exists():
+        log("Templates changed since last build -- rebuilding CSS...")
+    else:
+        log("No built CSS found -- building for the first time...")
 
     # Install node modules if needed
     if not NODE_MODULES.exists():

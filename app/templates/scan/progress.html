@@ -92,12 +92,8 @@
   let sseConnected = false;
   let pollTimer = null;
 
-  function updateProgress(total, tested, phase) {
-    let pct = total > 0 ? Math.round((tested / total) * 100) : 0;
-    // Cap at 95% while still scanning — 100% only on 'complete' event
-    if (phase && phase !== 'completed' && pct >= 100) {
-      pct = 95;
-    }
+  function updateProgress(total, tested) {
+    const pct = total > 0 ? Math.round((tested / total) * 100) : 0;
     document.getElementById('progress-pct').textContent = pct + '%';
     const circle = document.getElementById('progress-circle');
     circle.setAttribute('stroke-dashoffset', 264 - (264 * pct / 100));
@@ -133,22 +129,31 @@
   let logBuffer = [];
   let logFlushTimer = null;
 
-  function formatTimestamp(ts) {
-    if (!ts) return '\u2014';
-    try {
-      const d = new Date(ts);
-      if (isNaN(d.getTime())) return ts;
-      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch (e) {
-      return ts;
+  function addLog(msg, level, ts) {
+    if (firstLog) { logViewer.innerHTML = ''; firstLog = false; }
+    logBuffer.push({ msg, level, ts });
+    if (!logFlushTimer) {
+      logFlushTimer = setTimeout(flushLogs, 100);
     }
   }
 
-  function addLog(msg, level, ts) {
-    if (firstLog) { logViewer.innerHTML = ''; firstLog = false; }
-    logBuffer.push({ msg, level, ts: formatTimestamp(ts) });
-    if (!logFlushTimer) {
-      logFlushTimer = setTimeout(flushLogs, 100);
+  // Format ISO timestamp to readable local time
+  function formatTimestamp(isoStr) {
+    if (!isoStr) return '\u2014';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      const day = d.getDate();
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const mon = months[d.getMonth()];
+      const h = d.getHours();
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const s = String(d.getSeconds()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      return `${day} ${mon}, ${String(h12).padStart(2, '0')}:${m}:${s} ${ampm}`;
+    } catch (e) {
+      return isoStr;
     }
   }
 
@@ -162,7 +167,7 @@
       // Fix #24: Use textContent instead of innerHTML to prevent XSS
       const tsSpan = document.createElement('span');
       tsSpan.className = 'text-slate-600 mr-2';
-      tsSpan.textContent = '[' + (ts || '\u2014') + ']';
+      tsSpan.textContent = '[' + formatTimestamp(ts) + ']';
       div.appendChild(tsSpan);
       div.appendChild(document.createTextNode(msg));
       frag.appendChild(div);
@@ -184,7 +189,7 @@
     const badge = document.createElement('span');
     badge.className = 'sev-badge';
     badge.style.cssText = 'color:' + color + ';background:' + color + '15;border:1px solid ' + color + '50';
-    badge.textContent = data.severity;
+    badge.textContent = sanitizeHTML(data.severity);
 
     const details = document.createElement('div');
     details.className = 'flex-1 min-w-0';
@@ -272,10 +277,13 @@
           document.getElementById('stat-total').textContent = d.total || 0;
           document.getElementById('stat-tested').textContent = d.tested || 0;
           document.getElementById('stat-findings').textContent = d.findings || 0;
-          updateProgress(d.total || 0, d.tested || 0, d.phase || 'scanning');
+          updateProgress(d.total || 0, d.tested || 0);
         } else if (msg.type === 'complete') {
-          updateProgress(1, 1, 'completed');
           setStatus('completed');
+          // Force progress to 100%
+          const total = parseInt(document.getElementById('stat-total').textContent) || 1;
+          document.getElementById('stat-tested').textContent = total;
+          updateProgress(total, total);
           addLog('Scan completed! Score: ' + (msg.data.score || 'N/A'), 'success', '');
           evtSrc.close();
         }
@@ -301,10 +309,12 @@
       if (!res.ok) return;
       const st = await res.json();
       setStatus(st.status);
-      document.getElementById('stat-total').textContent = st.total_urls || 0;
-      document.getElementById('stat-tested').textContent = st.tested_urls || 0;
+      const total = st.total_urls || 0;
+      const tested = ['completed','stopped','error'].includes(st.status) ? total : (st.tested_urls || 0);
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-tested').textContent = tested;
       document.getElementById('stat-findings').textContent = st.findings || 0;
-      updateProgress(st.total_urls || 0, st.tested_urls || 0, st.status === 'completed' ? 'completed' : 'scanning');
+      updateProgress(total, tested);
     } catch(e) {}
   }
 
@@ -318,20 +328,12 @@
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
-  // Client-side elapsed timer — use scan start time if available, fallback to page load
-  const scanStartedAt = '{{ scan.started_at or "" }}';
-  const scanStart = scanStartedAt ? new Date(scanStartedAt).getTime() : Date.now();
+  // Client-side elapsed timer
+  const scanStart = Date.now();
   setInterval(() => {
       const el = document.getElementById('stat-elapsed');
       if (el && !['completed','stopped','error'].includes(currentStatus)) {
-        const secs = Math.round((Date.now() - scanStart) / 1000);
-        if (secs < 60) {
-          el.textContent = secs + 's';
-        } else if (secs < 3600) {
-          el.textContent = Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
-        } else {
-          el.textContent = Math.floor(secs / 3600) + 'h ' + Math.floor((secs % 3600) / 60) + 'm';
-        }
+        el.textContent = Math.round((Date.now() - scanStart) / 1000) + 's';
       }
   }, 1000);
 

@@ -7,6 +7,7 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 from flask import current_app
+from app.config import Config
 
 
 class DVWAAuth:
@@ -31,7 +32,7 @@ class DVWAAuth:
             verify=False,
             timeout=httpx.Timeout(10.0, connect=5.0),
             follow_redirects=True,
-            headers={"User-Agent": "Sudarshan-Scanner/1.0 (Security Research)"},
+            headers=Config.SCANNER_HEADERS,
         )
 
         base_url = base_url.rstrip("/")

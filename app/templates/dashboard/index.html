@@ -36,26 +36,27 @@
     {% endfor %}
   </div>
 
+
   <!-- Charts -->
   <div class="grid grid-cols-1 lg:grid-cols-10 gap-8">
-    <div class="lg:col-span-6 glass-card p-6 rounded-xl">
-      <h4 class="text-lg font-bold text-white mb-8">Vulnerability Trend</h4>
-      <div style="height:260px"><canvas id="trendChart"></canvas></div>
+    <div class="lg:col-span-6 glass-card p-6 rounded-2xl border border-white/10">
+      <h4 class="text-[24px] font-semibold text-white mb-8">Vulnerability Trend</h4>
+      <div style="height:280px"><canvas id="trendChart"></canvas></div>
     </div>
-    <div class="lg:col-span-4 glass-card p-6 rounded-xl">
-      <h4 class="text-lg font-bold text-white mb-8">Severity Breakdown</h4>
-      <div style="height:170px"><canvas id="pieChart"></canvas></div>
-      <div class="mt-6 space-y-3">
-        {% for sev, color in [('critical', '#ff2d55'), ('high', '#ff6400'), ('medium', '#ffb800'), ('low', '#00d46a')] %}
+    <div class="lg:col-span-4 glass-card p-6 rounded-2xl border border-white/10">
+      <h4 class="text-[24px] font-semibold text-white mb-8">Severity Breakdown</h4>
+      <div style="height:220px"><canvas id="pieChart"></canvas></div>
+      <div class="mt-6 space-y-4">
+        {% for sev, color in [('critical', '#FF4D6D'), ('high', '#FF9F1C'), ('medium', '#FFC857'), ('low', '#00FF9D')] %}
         <div>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full" style="background:{{ color }}"></div>
-              <span class="text-xs text-slate-400 font-medium capitalize">{{ sev }}</span>
+          <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-3 h-3 rounded-full" style="background:{{ color }}"></div>
+              <span class="text-sm text-slate-400 font-medium capitalize">{{ sev }}</span>
             </div>
-            <span class="text-xs font-mono text-white">{{ stats[sev] }}</span>
+            <span class="text-sm font-mono text-white">{{ stats[sev] }}</span>
           </div>
-          <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden mt-1">
+          <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden mt-3">
             <div class="h-full rounded-full transition-all duration-500" style="width:{{ sev_pct[sev] }}%;background:{{ color }}"></div>
           </div>
         </div>
@@ -65,10 +66,10 @@
   </div>
 
   <!-- Recent Scans -->
-  <div class="glass-card rounded-xl overflow-hidden border border-slate-800">
-    <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-white/5">
-      <h4 class="text-lg font-bold text-white uppercase tracking-tight">Recent Scans</h4>
-      <a href="/history" class="text-sm text-primary hover:underline font-semibold">View All →</a>
+  <div class="glass-card rounded-2xl overflow-hidden border border-white/10">
+    <div class="p-6 border-b border-white/10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-white/5">
+      <h4 class="text-[24px] font-semibold text-white uppercase tracking-tight">Recent Scans</h4>
+      <a href="/history" class="text-sm text-accent-primary hover:text-white font-semibold transition-colors">View All →</a>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-left">
@@ -117,11 +118,11 @@
               {% else %}—{% endif %}
             </td>
             <td class="px-6 py-5 text-center font-mono text-sm">
-              <span style="color:#ff2d55">{{ s.critical }}</span>
-              <span class="text-slate-600 mx-1">/</span>
-              <span style="color:#ff6400">{{ s.high }}</span>
-              <span class="text-slate-600 mx-1">/</span>
-              <span style="color:#ffb800">{{ s.med }}</span>
+              <span style="color:#FF4D6D">{{ s.critical }}</span>
+              <span class="text-slate-400 mx-1">/</span>
+              <span style="color:#FF9F1C">{{ s.high }}</span>
+              <span class="text-slate-400 mx-1">/</span>
+              <span style="color:#FFC857">{{ s.med }}</span>
             </td>
             <td class="px-6 py-5 text-xs text-slate-400 font-mono">{{ s.date }}</td>
             <td class="px-6 py-5 text-right">
@@ -153,43 +154,180 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4" onerror="var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.7/chart.umd.min.js';document.head.appendChild(s);"></script>
 <script>
   const trendData = {{ trend_data | tojson }};
   const stats = {{ stats | tojson }};
 
-  // Trend Chart
-  new Chart(document.getElementById('trendChart'), {
-    type: 'line',
-    data: {
-      labels: trendData.labels,
-      datasets: [
-        { label: 'Critical', data: trendData.critical, borderColor: '#ff2d55', borderWidth: 2, pointRadius: 3, tension: 0.3 },
-        { label: 'High', data: trendData.high, borderColor: '#ff6400', borderWidth: 2, pointRadius: 3, tension: 0.3 },
-        { label: 'Medium', data: trendData.medium, borderColor: '#ffb800', borderWidth: 2, pointRadius: 3, tension: 0.3 },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: {
-      x: { ticks: { color: '#4a5a6a', font: { size: 10, family: 'JetBrains Mono' } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-      y: { ticks: { color: '#4a5a6a', font: { size: 10, family: 'JetBrains Mono' } }, grid: { color: 'rgba(255,255,255,0.04)' } }
-    }}
-  });
+  /**
+   * Initialize charts only after Chart.js is available.
+   * The CDN <script> may not have loaded yet when this inline script runs,
+   * especially on first visit with an empty cache. This retry pattern prevents
+   * "ReferenceError: Chart is not defined" which caused blank charts.
+   */
+  function initCharts() {
+    // Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    const gradientCritical = trendCtx.createLinearGradient(0, 0, 0, 280);
+    gradientCritical.addColorStop(0, 'rgba(255,77,109,0.45)');
+    gradientCritical.addColorStop(1, 'rgba(255,77,109,0.04)');
+    const gradientHigh = trendCtx.createLinearGradient(0, 0, 0, 280);
+    gradientHigh.addColorStop(0, 'rgba(255,159,28,0.45)');
+    gradientHigh.addColorStop(1, 'rgba(255,159,28,0.06)');
+    const gradientMedium = trendCtx.createLinearGradient(0, 0, 0, 280);
+    gradientMedium.addColorStop(0, 'rgba(255,200,87,0.45)');
+    gradientMedium.addColorStop(1, 'rgba(255,200,87,0.06)');
+    const gradientLow = trendCtx.createLinearGradient(0, 0, 0, 280);
+    gradientLow.addColorStop(0, 'rgba(0,212,106,0.45)');
+    gradientLow.addColorStop(1, 'rgba(0,212,106,0.06)');
 
-  // Pie Chart
-  const pieValues = [stats.critical, stats.high, stats.medium, stats.low].filter(v => v > 0);
-  const pieLabels = ['Critical','High','Medium','Low'].filter((_, i) => [stats.critical,stats.high,stats.medium,stats.low][i] > 0);
-  const pieColors = ['#ff2d55','#ff6400','#ffb800','#00d46a'].filter((_, i) => [stats.critical,stats.high,stats.medium,stats.low][i] > 0);
-  if (pieValues.length > 0) {
-    new Chart(document.getElementById('pieChart'), {
-      type: 'doughnut',
-      data: { labels: pieLabels, datasets: [{ data: pieValues, backgroundColor: pieColors, borderWidth: 2, borderColor: '#0d0d24' }] },
-      options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { display: false } } }
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: trendData.labels,
+        datasets: [
+          {
+            label: 'Critical',
+            data: trendData.critical,
+            borderColor: '#FF4D6D',
+            backgroundColor: gradientCritical,
+            borderWidth: 3,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#FF4D6D',
+            tension: 0.4,
+            fill: true,
+            segment: { borderJoinStyle: 'round' }
+          },
+          {
+            label: 'High',
+            data: trendData.high,
+            borderColor: '#FF9F1C',
+            backgroundColor: gradientHigh,
+            borderWidth: 3,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#FF9F1C',
+            tension: 0.4,
+            fill: true,
+            segment: { borderJoinStyle: 'round' }
+          },
+          {
+            label: 'Medium',
+            data: trendData.medium,
+            borderColor: '#FFC857',
+            backgroundColor: gradientMedium,
+            borderWidth: 3,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#FFC857',
+            tension: 0.4,
+            fill: true,
+            segment: { borderJoinStyle: 'round' }
+          },
+          {
+            label: 'Low',
+            data: trendData.low,
+            borderColor: '#00d46a',
+            backgroundColor: gradientLow,
+            borderWidth: 3,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#00d46a',
+            tension: 0.4,
+            fill: true,
+            segment: { borderJoinStyle: 'round' }
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0A1022',
+            titleColor: '#F8FAFC',
+            bodyColor: '#94A3B8',
+            borderColor: 'rgba(0,229,255,0.25)',
+            borderWidth: 1,
+            padding: 12,
+            displayColors: true,
+            bodyFont: { family: 'Inter, sans-serif', size: 12 }
+          }
+        },
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+          x: {
+            ticks: { color: '#94A3B8', font: { size: 11, family: 'JetBrains Mono' } },
+            grid: { color: 'rgba(255,255,255,0.08)' },
+            border: { color: 'rgba(255,255,255,0.14)' }
+          },
+          y: {
+            ticks: { color: '#94A3B8', font: { size: 11, family: 'JetBrains Mono' } },
+            grid: { color: 'rgba(255,255,255,0.08)' },
+            border: { color: 'rgba(255,255,255,0.14)' }
+          }
+        }
+      }
     });
+
+    // Pie Chart
+    const pieValues = [stats.critical, stats.high, stats.medium, stats.low].filter(v => v > 0);
+    const pieLabels = ['Critical','High','Medium','Low'].filter((_, i) => [stats.critical,stats.high,stats.medium,stats.low][i] > 0);
+    const pieColors = ['#FF4D6D','#FF9F1C','#FFC857','#00FF9D'].filter((_, i) => [stats.critical,stats.high,stats.medium,stats.low][i] > 0);
+    if (pieValues.length > 0) {
+      new Chart(document.getElementById('pieChart'), {
+        type: 'doughnut',
+        data: {
+          labels: pieLabels,
+          datasets: [{ data: pieValues, backgroundColor: pieColors, borderWidth: 2, borderColor: '#050816' }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0A1022',
+              titleColor: '#F8FAFC',
+              bodyColor: '#94A3B8',
+              borderColor: 'rgba(0,229,255,0.25)',
+              borderWidth: 1,
+              padding: 12
+            }
+          }
+        }
+      });
+    }
   }
+
+  /**
+   * Wait for Chart.js to be available before initializing charts.
+   * Retries every 100ms for up to 5 seconds (50 attempts).
+   * This handles the race condition where the CDN script loads after
+   * the inline script runs, which caused blank charts on first visit.
+   */
+  function waitForChart(attempts) {
+    attempts = attempts || 0;
+    if (typeof Chart !== 'undefined') {
+      initCharts();
+    } else if (attempts < 50) {
+      setTimeout(function() { waitForChart(attempts + 1); }, 100);
+    } else {
+      console.warn('Chart.js failed to load after 5s — charts will not render.');
+    }
+  }
+
+  // Start waiting for Chart.js (immediate if already loaded from cache)
+  waitForChart();
 
   function deleteScan(id) {
     if (!confirm('Delete scan #' + id + '? This action cannot be undone.')) return;
-    fetch('/api/scans/' + id, { method: 'DELETE' })
+    var csrfToken = document.querySelector('meta[name="csrf-token"]');
+    var headers = { 'X-CSRFToken': csrfToken ? csrfToken.getAttribute('content') : '' };
+    fetch('/api/v2/scans/' + id, { method: 'DELETE', headers: headers })
       .then(function(resp) {
         if (resp.ok) {
           location.reload();

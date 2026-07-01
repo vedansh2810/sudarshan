@@ -4,6 +4,8 @@ import logging
 import httpx
 import time
 
+from app.config import Config
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ class BaseScanner:
                     max_connections=20,
                     max_keepalive_connections=10,
                 ),
-                headers={"User-Agent": "Sudarshan-Scanner/1.0"},
+                headers=Config.SCANNER_HEADERS,
                 event_hooks={"request": [BaseScanner._validate_request_url]},
                 max_redirects=10,
             )

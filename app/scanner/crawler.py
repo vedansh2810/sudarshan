@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.models.database import db, CrawledUrlModel
 import os
 from flask import current_app
+from app.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,11 @@ class Crawler:
         self.injectable_points = []
         self.stopped = False  # Stop-signal support
 
+        # Smart rate-limiting: track last request time per-crawler
+        # instead of unconditionally sleeping on every request.
+        self._last_request_time = 0.0
+        self._rate_lock = threading.Lock()
+
         # Session management — reuse an authenticated session if provided
         if session:
             self.session = session
@@ -65,7 +71,7 @@ class Crawler:
                 follow_redirects=True,
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
                 headers={
-                    "User-Agent": "Sudarshan-Scanner/1.0 (Security Research)",
+                    **Config.SCANNER_HEADERS,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 },
             )
@@ -279,52 +285,32 @@ class Crawler:
     def _is_same_domain(self, url):
         return urlparse(url).netloc == self.base_domain
 
-    def _is_html_content(self, url):
-        """Send a HEAD request to check if URL serves HTML content.
-        Returns True if HTML, False if binary/non-HTML, None if HEAD fails."""
-        # Skip for common non-HTML extensions
-        skip_extensions = {
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".gif",
-            ".svg",
-            ".ico",
-            ".webp",
-            ".css",
-            ".js",
-            ".woff",
-            ".woff2",
-            ".ttf",
-            ".eot",
-            ".pdf",
-            ".zip",
-            ".tar",
-            ".gz",
-            ".mp3",
-            ".mp4",
-            ".avi",
-            ".doc",
-            ".docx",
-            ".xls",
-            ".xlsx",
-            ".ppt",
-            ".pptx",
-        }
-        parsed_path = urlparse(url).path.lower()
-        for ext in skip_extensions:
-            if parsed_path.endswith(ext):
-                return False
+    # Maximum response body size to parse (2 MB). Responses larger than this
+    # are unlikely to contain useful crawler links and waste parsing time.
+    MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
-        try:
-            resp = self.session.head(url, timeout=self.timeout, follow_redirects=True)
-            content_type = resp.headers.get("content-type", "")
-            # If no content-type or it's HTML, allow through
-            if not content_type:
-                return None  # Can't determine, will try GET
-            return "text/html" in content_type or "application/xhtml" in content_type
-        except Exception:
-            return None  # Can't determine, will try GET
+    # Extensions known to be non-HTML — checked before making any HTTP request.
+    _SKIP_EXTENSIONS = frozenset({
+        ".jpg", ".jpeg", ".png", ".gif", ".svg", ".ico", ".webp", ".avif",
+        ".css", ".js", ".mjs", ".map",
+        ".woff", ".woff2", ".ttf", ".eot", ".otf",
+        ".pdf", ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
+        ".mp3", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ogg",
+        ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".exe", ".dmg", ".iso", ".bin", ".apk",
+        ".xml", ".json", ".csv", ".tsv",
+    })
+
+    @classmethod
+    def _has_non_html_extension(cls, url):
+        """Fast, allocation-free check: does the URL path end with a
+        known non-HTML extension?  No HTTP request is made."""
+        path = urlparse(url).path.lower()
+        # Find the last '.' in the path (ignore query/fragment already stripped)
+        dot_idx = path.rfind(".")
+        if dot_idx == -1:
+            return False
+        return path[dot_idx:] in cls._SKIP_EXTENSIONS
 
     # ── Link & Form Extraction ───────────────────────────────────────
 
@@ -368,18 +354,11 @@ class Crawler:
             ]
             for script in soup.find_all("script"):
                 js_text = script.string or ""
-                # Also handle external JS files
-                if not js_text and script.get("src"):
-                    js_src = urljoin(base_url, script["src"])
-                    if self._is_same_domain(js_src):
-                        try:
-                            js_resp = self.session.get(
-                                js_src, timeout=self.timeout
-                            )
-                            if js_resp.status_code == 200:
-                                js_text = js_resp.text or ""
-                        except Exception:
-                            pass
+                # NOTE: External JS files (script[src]) are no longer
+                # fetched here — they are discovered as URLs via the
+                # resource-tag loop above, and filtered out by the
+                # extension check (.js → non-HTML).  Fetching them here
+                # was redundant and added N extra HTTP requests per page.
                 if js_text:
                     for pattern in js_url_patterns:
                         for js_url in re.findall(pattern, js_text, re.IGNORECASE):
@@ -455,10 +434,21 @@ class Crawler:
     # ── Retry Logic ──────────────────────────────────────────────────
 
     def _fetch_with_retry(self, url, max_retries=2):
-        """Fetch a URL with exponential backoff retry for transient errors."""
+        """Fetch a URL with exponential backoff retry for transient errors.
+
+        Uses smart rate-limiting: only sleeps for the remaining interval
+        since the last request, so threads that were already blocked by
+        network latency don't waste additional time."""
         for attempt in range(max_retries + 1):
             try:
-                time.sleep(self.delay)
+                # Smart delay: only sleep the remainder of the interval
+                if self.delay > 0:
+                    with self._rate_lock:
+                        now = time.monotonic()
+                        elapsed = now - self._last_request_time
+                        if elapsed < self.delay:
+                            time.sleep(self.delay - elapsed)
+                        self._last_request_time = time.monotonic()
                 response = self.session.get(
                     url, timeout=self.timeout
                 )
@@ -513,11 +503,10 @@ class Crawler:
         if not self._is_allowed(url):
             return None
 
-        # Content-type pre-check for non-root URLs
-        if depth > 0:
-            is_html = self._is_html_content(url)
-            if is_html is False:
-                return None
+        # Fast extension-based filter — no HTTP request needed.
+        # Replaces the old HEAD pre-check which doubled HTTP calls.
+        if depth > 0 and self._has_non_html_extension(url):
+            return None
 
         response = self._fetch_with_retry(url)
         if response is None:
@@ -529,31 +518,43 @@ class Crawler:
 
         if response.status_code == 200:
             content_type = response.headers.get("content-type", "")
-            if "text/html" in content_type:
-                links = self._extract_links(response.text, url)
-                forms = self._extract_forms(response.text, url)
-                params = self._extract_params(url)
+            if "text/html" in content_type or "application/xhtml" in content_type:
+                # Content-size guard: skip parsing very large responses
+                # (data dumps, giant JS bundles) that are unlikely to
+                # contain useful crawler links.
+                body = response.text
+                if len(body) > self.MAX_RESPONSE_BYTES:
+                    logger.debug(
+                        f"Skipping parse of {url}: response too large "
+                        f"({len(body)} bytes > {self.MAX_RESPONSE_BYTES})"
+                    )
+                else:
+                    links = self._extract_links(body, url)
+                    forms = self._extract_forms(body, url)
+                    params = self._extract_params(url)
 
-                url_info["forms"] = len(forms)
-                url_info["params"] = len(params)
+                    url_info["forms"] = len(forms)
+                    url_info["params"] = len(params)
 
-                with self._lock:
-                    self.forms.extend(forms)
-                    self.injectable_points.extend(params)
-                    for form in forms:
-                        self.injectable_points.append(
-                            {
-                                "type": "form",
-                                "action": form["action"],
-                                "method": form["method"],
-                                "inputs": form["inputs"],
-                            }
-                        )
-
-                for link in links:
                     with self._lock:
-                        if link not in self.visited_urls:
-                            new_links.append((link, depth + 1))
+                        self.forms.extend(forms)
+                        self.injectable_points.extend(params)
+                        for form in forms:
+                            self.injectable_points.append(
+                                {
+                                    "type": "form",
+                                    "action": form["action"],
+                                    "method": form["method"],
+                                    "inputs": form["inputs"],
+                                }
+                            )
+
+                    # Batch lock: filter all new links in one lock acquisition
+                    # instead of locking per-link.
+                    with self._lock:
+                        for link in links:
+                            if link not in self.visited_urls:
+                                new_links.append((link, depth + 1))
 
         with self._lock:
             self.discovered_urls.append(url_info)
@@ -596,31 +597,40 @@ class Crawler:
 
         _db_batch = []  # Buffer for batch DB writes
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
-            while queue and not self.stopped:
-                # Check URL limit
-                with self._lock:
-                    if len(self.discovered_urls) >= self.max_urls:
-                        break
+            # Pipeline model: keep up to `self.threads` futures in flight
+            # at all times.  As each future completes, immediately submit
+            # the next URL from the queue.  This replaces the old
+            # batch-then-wait pattern which left workers idle whenever the
+            # queue had fewer items than threads.
+            active_futures = {}  # future -> (url, depth)
 
-                # Submit a batch of URLs from the queue
-                batch_size = min(len(queue), self.threads)
-                batch = [queue.popleft() for _ in range(batch_size)]
-
-                futures = {}
-                for url, depth in batch:
+            def _submit_next():
+                """Pop URLs from the queue and submit them until we hit
+                the concurrency cap or the queue is empty."""
+                while queue and len(active_futures) < self.threads and not self.stopped:
+                    with self._lock:
+                        if len(self.discovered_urls) >= self.max_urls:
+                            return
+                    url, depth = queue.popleft()
                     future = executor.submit(self._process_url, url, depth)
-                    futures[future] = (url, depth)
+                    active_futures[future] = (url, depth)
 
-                for future in as_completed(futures):
-                    if self.stopped:
-                        break
+            # Initial fill
+            _submit_next()
 
-                    url, depth = futures[future]
-                    try:
-                        result = future.result()
-                        if result is None:
-                            continue
+            while active_futures and not self.stopped:
+                # Wait for ANY one future to complete
+                done_iter = as_completed(active_futures)
+                try:
+                    future = next(done_iter)
+                except StopIteration:
+                    break
 
+                url, depth = active_futures.pop(future)
+
+                try:
+                    result = future.result()
+                    if result is not None:
                         new_links, url_info, status_code = result
 
                         # Buffer for batch DB persistence
@@ -654,8 +664,11 @@ class Crawler:
                             for link in new_links[:remaining]:
                                 queue.append(link)
 
-                    except Exception as e:
-                        logger.error(f"Error processing future for {url}: {e}")
+                except Exception as e:
+                    logger.error(f"Error processing future for {url}: {e}")
+
+                # Immediately refill the pipeline with new work
+                _submit_next()
 
         # Flush remaining DB batch
         if scan_id and _db_batch:

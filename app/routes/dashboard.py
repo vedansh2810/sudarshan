@@ -86,18 +86,21 @@ def index():
     trend_critical = []
     trend_high = []
     trend_medium = []
+    trend_low = []
     for t in reversed(trend_scans or []):
         label = str(t["started_at"] or "")[:10]
         trend_labels.append(label)
         trend_critical.append(t["critical_count"] or 0)
         trend_high.append(t["high_count"] or 0)
         trend_medium.append(t["medium_count"] or 0)
+        trend_low.append(t["low_count"] or 0)
 
     trend_data = {
         "labels": trend_labels or ["No data"],
         "critical": trend_critical or [0],
         "high": trend_high or [0],
         "medium": trend_medium or [0],
+        "low": trend_low or [0],
     }
 
     return render_template(
