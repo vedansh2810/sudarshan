@@ -10,7 +10,11 @@
     <a href="#scanners">Scanners</a> •
     <a href="#api">API</a> •
     <a href="#configuration">Configuration</a> •
+    <a href="#testing">Testing</a> •
     <a href="#license">License</a>
+  </p>
+  <p align="center">
+    <code>~24,000 lines of Python</code> · <code>22 vulnerability scanners</code> · <code>226 tests</code> · <code>37 API endpoints</code>
   </p>
 </p>
 
@@ -21,7 +25,7 @@ Sudarshan is an **AI-powered web vulnerability scanner** that combines automated
 ## Features
 
 - **22 Vulnerability Scanners** — SQL Injection, XSS, Command Injection, SSRF, XXE, CSRF, CORS, Clickjacking, SSTI, IDOR, Directory Listing, JWT Attacks, Broken Auth, Open Redirect, Directory Traversal, Security Headers, NoSQL Injection, File Upload, Host Header Attacks, Information Disclosure, Prototype Pollution, Insecure Deserialization
-- **AI-Powered Analysis** — Groq LLM (Llama 3.3 70B) generates executive summaries, remediation plans, and attack narratives
+- **AI-Powered Analysis** — Groq LLM (Qwen3 32B, configurable) generates executive summaries, remediation plans, and attack narratives
 - **Multi-Key LLM Rotation** — Round-robin across multiple Groq API keys with automatic failover on rate limits
 - **PortSwigger Integration** — 2,000+ payloads from PortSwigger Web Security Academy with lab references
 - **ML False-Positive Filter** — Random Forest + Gradient Boosting ensemble classifier reduces noise
@@ -174,15 +178,43 @@ python start.py --setup-guide # Show Supabase + Groq setup instructions
 └─────────────────┴──────────────────────┴────────────────────────┘
 ```
 
+### Scan Pipeline (5 Phases)
+
+1. **Phase 1 — Crawling:** BFS crawler discovers URLs, forms, and injectable parameters
+2. **Phase 1.5 — AI Reconnaissance:** Groq LLM analyzes target tech stack (server, framework, WAF detection)
+3. **Phase 2 — Vulnerability Scanning:** 22 scanners run in parallel via `ThreadPoolExecutor` (120s timeout per scanner)
+4. **Phase 3 — AI Verification:** LLM verifies each finding with prompt injection defense (9 regex filters)
+5. **Phase 4 — ML Classification & Scoring:** False-positive classifier filters noise, security score (A–F) calculated
+
+Real-time progress via SSE (Server-Sent Events) with Redis pub/sub, automatic fallback to in-memory polling. Scans support **pause**, **resume**, and **stop** controls.
+
 ### Key Design Decisions
 
-- **Database Fallback:** App probes PostgreSQL on startup; if unreachable, falls back to SQLite automatically. No code changes needed.
+- **Database Fallback:** App probes PostgreSQL on startup (5s timeout); if unreachable, falls back to SQLite automatically. Auto-converts `postgres://` → `postgresql+psycopg://` for Supabase/Heroku compatibility.
 - **Graceful AI Degradation:** All AI/LLM features are optional. Without a Groq API key, the app works normally — AI-generated summaries are replaced with template-based fallbacks.
-- **Multi-Key LLM Rotation:** The `LLMClient` supports multiple Groq API keys with round-robin rotation. If a key is rate-limited (429), it automatically fails over to the next key.
-- **Pre-built CSS:** Tailwind CSS is compiled at build time (30KB minified), not loaded from CDN. This improves performance, works offline, and removes the CDN dependency.
-- **Session-Based Auth:** Supabase handles identity (email/OAuth), but Flask manages sessions server-side (8-hour expiry). This avoids token refresh complexity on every request.
-- **Scanner Registry:** All scanner classes are registered in `app/scanner/registry.py`, eliminating duplication between `scan_manager.py` and `tasks.py`.
-- **Plan-Based Limits:** Resource quotas (scans/month, concurrent scans, team size) are enforced per plan tier (free/pro/enterprise) defined in `Config.PLAN_LIMITS`.
+- **Multi-Key LLM Rotation:** The `LLMClient` supports multiple Groq API keys with round-robin rotation and token-aware rate limiting. If a key is rate-limited (429), it automatically fails over to the next key.
+- **Pre-built CSS:** Tailwind CSS is compiled at build time (~32KB), not loaded from CDN. This improves performance, works offline, and removes the CDN dependency.
+- **Session-Based Auth:** Supabase handles identity (email/OAuth), but Flask manages sessions server-side (8-hour expiry). Session fixation protection via `session.clear()` on login.
+- **Scanner Registry:** All 22 scanner classes (24 total — `idor.py` exports 2) are registered in `app/scanner/registry.py`, eliminating duplication between `scan_manager.py` and `tasks.py`.
+- **Plan-Based Limits:** Resource quotas (scans/month, concurrent scans, team size) are enforced per plan tier.
+- **Prompt Injection Defense:** Target response data is sanitized through 9 regex patterns before being sent to the LLM for vulnerability verification.
+- **ML Model Integrity:** SHA-256 checksum verification before loading ML models, preventing arbitrary code execution via poisoned joblib files.
+
+### Scan Speed Profiles
+
+| Profile | Request Delay | Threads | Timeout | Max URLs |
+|---------|:------------:|:-------:|:-------:|:--------:|
+| Safe | 1.0s | 3 | 10s | 75 |
+| Balanced | 0.15s | 6 | 8s | 200 |
+| Aggressive | 0.05s | 10 | 5s | 500 |
+
+### Plan Limits
+
+| Plan | Scans/Month | Concurrent | Team Size | Max URLs/Scan | AI Features |
+|------|:-----------:|:----------:|:---------:|:------------:|:-----------:|
+| Free | 5 | 1 | 3 | 100 | ❌ |
+| Pro | 50 | 3 | 15 | 500 | ✅ |
+| Enterprise | ∞ | 10 | ∞ | ∞ | ✅ |
 
 ## Scanners
 
@@ -274,13 +306,40 @@ curl http://localhost:5000/api/v2/scans/1/report/pdf \
 | `REDIS_URL` | No | — | Redis URI for Celery & SSE pub/sub |
 | `GROQ_API_KEY` | No | — | Groq API key for AI features |
 | `GROQ_API_KEYS` | No | — | Comma-separated Groq keys for rotation |
-| `GROQ_MODEL` | No | `llama-3.3-70b-versatile` | LLM model to use |
+| `GROQ_MODEL` | No | `qwen/qwen3-32b` | LLM model to use |
 | `PORT` | No | `5000` | Server port |
 | `FLASK_DEBUG` | No | `1` | Debug mode (disable in production) |
 | `ALLOW_LOCAL_TARGETS` | No | `false` | Allow scanning localhost/private IPs |
 | `ALLOW_INSECURE_TARGETS` | No | `false` | Skip TLS verification for local testing |
 
 *Required for user authentication. Without these, the app runs but login/register pages won't function.
+
+## Testing
+
+Sudarshan has **226 test cases** across 10 test files covering the full stack:
+
+| Test File | Tests | Coverage Area |
+|-----------|:-----:|---------------|
+| `test_crawler.py` | 39 | URL normalization, validation, scoping, link extraction |
+| `test_crawler_scanner.py` | 33 | Crawler + 6 scanner integration tests |
+| `test_integration.py` | 14 | Flask routes, ORM CRUD, scanner registry |
+| `test_multi_tenancy.py` | 12 | Organizations, plan limits, GDPR compliance |
+| `test_new_scanners.py` | 22 | XXE, SSRF, Open Redirect, CORS, Clickjacking |
+| `test_phase5_scanners.py` | 30 | NoSQL Injection, File Upload, Host Header, Info Disclosure, Prototype Pollution, Insecure Deserialization |
+| `test_routes.py` | 28 | All HTTP routes, API v2, auth flows, origin validation |
+| `test_smart_engine_integration.py` | 19 | AI/ML SmartEngine, report writer, singleton thread safety |
+| `test_stateless_scan_manager.py` | 10 | ScanManager state: Redis → in-memory → DB fallback |
+| `test_url_safety.py` | 19 | SSRF protection, cloud metadata blocking |
+
+All tests use `unittest.mock` — zero real network calls. Integration tests use in-memory SQLite.
+
+```bash
+# Activate venv first
+.venv/Scripts/activate    # Windows
+source .venv/bin/activate # Linux/Mac
+
+pytest tests/ -v
+```
 
 ## Development
 
@@ -293,16 +352,6 @@ npm run build:css       # One-time production build (minified)
 npm run watch:css       # Watch mode for development
 ```
 
-### Run Tests
-
-```bash
-# Activate venv first
-.venv/Scripts/activate    # Windows
-source .venv/bin/activate # Linux/Mac
-
-pytest tests/ -v
-```
-
 ### Celery Worker (Optional)
 
 For async scan execution with Redis:
@@ -313,6 +362,12 @@ celery -A app.celery_app.celery worker --loglevel=info
 
 Without Redis/Celery, scans run in background threads (works fine for single-user setups).
 
+### Sign ML Model (After Retraining)
+
+```bash
+python -m app.ml.sign_model data/ml_models/fp_classifier_v{timestamp}.joblib
+```
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -321,12 +376,13 @@ Without Redis/Celery, scans run in background threads (works fine for single-use
 | Frontend | Jinja2, Tailwind CSS 3 (pre-built), vanilla JS |
 | Database | PostgreSQL (Supabase) / SQLite fallback |
 | Auth | Supabase Auth (GoTrue) + Flask sessions |
-| AI/LLM | Groq API (Llama 3.3 70B) with multi-key rotation |
-| ML | scikit-learn (Random Forest + Gradient Boosting) |
-| Task Queue | Celery + Redis (optional) |
+| AI/LLM | Groq API (Qwen3 32B, configurable) with multi-key rotation |
+| ML | scikit-learn (Random Forest + Gradient Boosting ensemble) |
+| Task Queue | Celery + Redis (optional, falls back to threading) |
 | Reports | fpdf2 (PDF generation) |
 | Monitoring | Prometheus client |
-| CSS Build | Tailwind CSS CLI |
+| Security | SSRF protection, prompt injection defense, SHA-256 model verification |
+| CSS Build | Tailwind CSS 3 CLI |
 
 ## License
 
